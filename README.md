@@ -2,7 +2,7 @@
 
 [![Built on Stellar](https://img.shields.io/badge/Built%20on-Stellar-blue?logo=stellar)](https://stellar.org)
 [![Soroban Smart Contracts](https://img.shields.io/badge/Smart%20Contracts-Soroban-purple)](https://soroban.stellar.org)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](#license)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#license)
 [![Status: Pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange)](#roadmap)
 
 A patient-owned emergency health card on Stellar — the vitals that decide emergency treatment travel with the patient as a scannable QR code, work offline, and can be cryptographically verified by a health worker so a first responder can trust them on the spot.
@@ -267,7 +267,7 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 
 ## License
 
-Recommended: **Apache-2.0** (OSI-approved, includes a patent grant — required for Digital Public Good status).
+**MIT** (OSI-approved; see [LICENSE](LICENSE)).
 
 ## Contributing
 
