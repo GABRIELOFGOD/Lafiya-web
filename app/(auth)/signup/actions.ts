@@ -1,0 +1,50 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { z } from "zod";
+
+import { createClient } from "@/lib/supabase/server";
+
+const signUpSchema = z.object({
+  email: z.email("Enter a valid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+export interface SignUpState {
+  error?: string;
+  info?: string;
+}
+
+export async function signUp(
+  _prevState: SignUpState | undefined,
+  formData: FormData,
+): Promise<SignUpState> {
+  const parsed = signUpSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signUp({
+    email: parsed.data.email,
+    password: parsed.data.password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  // If email confirmations are enabled (the default for hosted projects),
+  // signUp() succeeds but returns no session until the link is clicked.
+  if (!data.session) {
+    return {
+      info: "Check your email to confirm your account, then sign in.",
+    };
+  }
+
+  redirect("/profile");
+}
