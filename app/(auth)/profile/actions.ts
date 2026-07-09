@@ -56,6 +56,8 @@ export async function upsertProfile(
     name: formData.get("name"),
     dateOfBirth: formData.get("dateOfBirth") || undefined,
     language: formData.get("language") || undefined,
+    bloodGroup: formData.get("bloodGroup") || undefined,
+    genotype: formData.get("genotype") || undefined,
   });
 
   if (!parsed.success) {
