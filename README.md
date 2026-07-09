@@ -82,11 +82,11 @@ graph TB
 
 ### Core Components
 
-- **app/(public)/card/[id]** _(planned)_: public, read-only emergency page — the page a QR code points to
-- **app/(auth)/profile** _(planned)_: authenticated profile editor where a patient manages their private record
-- **lib/supabase/** _(planned)_: Supabase client and Row-Level Security policies for the off-chain encrypted store
-- **lib/stellar/** _(planned)_: Soroban contract bindings and USDC payment helpers
-- **lib/qr/** _(planned)_: QR code generation for the emergency page
+- **app/(public)/card/[id]**: public, read-only emergency page — the page a QR code points to
+- **app/(auth)/profile**: authenticated profile editor where a patient manages their private record
+- **lib/supabase/**: Supabase client/server helpers and hand-authored types for the off-chain encrypted store
+- **lib/stellar/**: pre-M1 attestation stub, ready to swap for a real Soroban contract call
+- **lib/qr/**: QR code generation for the emergency page
 
 The Soroban attestation registry, attester allowlist, and CHW verifier tool live in the `lafiya-contracts` and `lafiya-verifier` repos respectively — see [Lafiya Organization](#lafiya-organization).
 
@@ -127,6 +127,8 @@ pub struct Attestation {
 
 This composability lets a responder's scanner, or any other Stellar-aware verifier, confirm a record was attested by a real, allowlisted health worker — without an external oracle and without ever seeing the health data.
 
+**M1 handoff point.** This repo already has the pieces that plug into the contract above: `lib/attestation/recordHash.ts` computes the deterministic hash a `lafiya-contracts` call would use, and `lib/stellar/attestation.ts` exposes a `getAttestation(recordHash)` function with the signature the real Soroban call will have — today it's an in-memory mock (documented in the file itself) since `lafiya-contracts` doesn't exist yet. Swapping the mock body for a real contract call, once that repo ships, shouldn't require touching any caller (the public card page, the attestation Route Handler).
+
 ## Data Model (Emergency Subset)
 
 The public emergency page is intentionally minimal:
@@ -149,35 +151,52 @@ Everything else (full history, documents, notes) stays private, behind authentic
 
 ## Repository Structure
 
-This repository (`lafiya-web`) contains the patient + responder web app. The Soroban contracts, docs, and CHW verifier tool live in separate repos — see [Lafiya Organization](#lafiya-organization) below. Nothing has been scaffolded yet; this is the planned layout for milestone **M0**:
+This repository (`lafiya-web`) contains the patient + responder web app. The Soroban contracts, docs, and CHW verifier tool live in separate repos — see [Lafiya Organization](#lafiya-organization) below.
 
 ```
 lafiya-web/
 │
-├── README.md                    ← This file
-├── package.json                 ← Next.js dependencies
-├── .env.example                 ← Supabase + Stellar testnet config template
-├── next.config.js
+├── README.md
+├── package.json
+├── .env.example                  ← Config template (real values go in .env.local, gitignored)
+├── .env.test                     ← Fixed local-only Supabase demo keys for integration tests
+├── next.config.ts
+├── proxy.ts                      ← Session refresh + route protection (Next 16's "middleware")
+├── vitest.config.ts              ← Unit/component tests (jsdom)
+├── vitest.integration.config.ts  ← Integration tests (node, against a running `supabase start`)
+│
+├── .github/workflows/ci.yml
+│
+├── supabase/
+│   ├── config.toml
+│   ├── seed.sql                  ← Demo patient fixture for local dev
+│   └── migrations/                ← profiles table + RLS, get_emergency_card RPC, avatars bucket
 │
 ├── app/
-│   ├── (public)/
-│   │   └── card/[id]/           ← Public, read-only emergency page (QR target)
+│   ├── page.tsx                  ← Landing page
+│   ├── (public)/card/[id]/       ← Public, read-only emergency page (QR target)
 │   ├── (auth)/
-│   │   └── profile/             ← Authenticated profile editor
-│   └── api/
-│       └── attestation/         ← Calls into lafiya-contracts / Soroban RPC
+│   │   ├── signup/ signin/ signout/
+│   │   └── profile/              ← Authenticated profile editor (identity, blood group/genotype,
+│   │                                allergies/medications, chronic conditions, emergency contacts,
+│   │                                photo upload, QR + link display)
+│   └── api/attestation/[recordHash]/  ← Read-only attestation lookup Route Handler
 │
 ├── lib/
-│   ├── supabase/                ← Supabase client + Row-Level Security policies
-│   ├── stellar/                 ← Soroban contract bindings, USDC payment helpers
-│   └── qr/                      ← QR code generation
+│   ├── env.ts                    ← zod-validated environment config
+│   ├── supabase/                 ← Client/server helpers + hand-authored Database types
+│   ├── validation/                ← Profile form zod schema
+│   ├── qr/                       ← QR code generation
+│   ├── attestation/               ← Record-hash canonicalization + types
+│   ├── stellar/                  ← Pre-M1 attestation stub
+│   └── url/                      ← Request-derived base URL helper
 │
-└── docs/                        ← Local copies of data model / privacy notes (see lafiya-docs)
+└── tests/
+    ├── setup.ts
+    └── integration/               ← RLS + RPC tests against a real local Supabase
 ```
 
 ## Quick Start
-
-> **Status**: these steps describe the planned M0 setup. `package.json`, `.env.example`, and the app scaffold have not landed yet — see [Roadmap](#roadmap).
 
 ### 1. Install dependencies
 
@@ -185,13 +204,14 @@ lafiya-web/
 npm install
 ```
 
-### 2. Configure environment
+### 2. Start local Supabase and configure environment
 
 ```bash
+npx supabase start
 cp .env.example .env.local
 ```
 
-Fill in the Supabase project keys and Stellar testnet config — see [Lafiya Organization](#lafiya-organization) for the shared environment variable names.
+`supabase start` prints an `ANON_KEY` and `SERVICE_ROLE_KEY` — put those (and the printed `API_URL`, usually `http://127.0.0.1:54321`) into `.env.local` as `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. `supabase db reset` applies migrations and seeds one demo patient (`demo@lafiya.test` / `lafiya-demo-password`, card id `11111111-1111-1111-1111-111111111111`) for local testing. See [Lafiya Organization](#lafiya-organization) for what each variable is for.
 
 ### 3. Run the dev server
 
@@ -199,27 +219,30 @@ Fill in the Supabase project keys and Stellar testnet config — see [Lafiya Org
 npm run dev
 ```
 
-Serves the authenticated profile editor and the public emergency page locally.
+Visit `/signup` to create a card, `/profile` to edit it, or `/card/11111111-1111-1111-1111-111111111111` to see the seeded demo patient's public emergency page.
 
 ## Testing
 
 ```bash
-npm test
+npm test               # unit + component tests (Vitest + React Testing Library, jsdom)
+npx supabase start     # required once, before integration tests
+npm run test:integration  # RLS + RPC tests against real local Postgres
 ```
 
-No test suite exists yet — it lands with M0 alongside the initial Next.js scaffold. Planned coverage:
+- [x] Public emergency page renders only the patient-selected subset
+- [x] Row-Level Security policies enforce patient-only read/write access (plus a table-level GRANT, which RLS alone doesn't provide)
+- [x] QR generation produces a valid, input-dependent data URL
+- [x] Verified-indicator rendering for both the verified and not-yet-verified states
+- [x] `get_emergency_card` RPC contract: valid id, unknown id, anon-callable, no extra columns leak
 
-- [ ] Public emergency page renders only the patient-selected subset
-- [ ] Row-Level Security policies enforce patient-only write access
-- [ ] QR generation and scan-to-page routing
-- [ ] Verified-indicator rendering once an attestation exists
+Run `npm run lint && npm run typecheck && npm run build` for the same checks CI runs on every push/PR (see `.github/workflows/ci.yml`).
 
 ## Roadmap
 
 ### M0 — Public Card _(testnet)_
 
-- [ ] Patient can create a profile via `lafiya-web`
-- [ ] Public, read-only emergency page reachable by QR
+- [x] Patient can create a profile via `lafiya-web`
+- [x] Public, read-only emergency page reachable by QR
 - [ ] Deployed to Vercel against Stellar testnet config
 
 ### M1 — Attestation
@@ -260,9 +283,12 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 
 ## Dependencies
 
-- Node.js 18+ / Next.js — the `lafiya-web` app (`package.json`, planned), deployed on Vercel
-- Supabase — Postgres, Row-Level Security, encryption at rest
-- Soroban / Stellar SDK — for calling the on-chain attestation registry and USDC payments
+- Node.js 24+ / Next.js 16 (App Router) — deployed on Vercel
+- Supabase (`@supabase/supabase-js`, `@supabase/ssr`) — Postgres, Auth, Storage, Row-Level Security
+- `zod` — environment and form validation
+- `qrcode` — QR code generation
+- Vitest, React Testing Library — unit, component, and integration tests
+- Soroban / Stellar SDK — planned for M1, once `lafiya-contracts` exists; not a dependency of this repo yet
 - W3C Verifiable Credentials data model, HL7 FHIR — standards informing the data model (see [References](#references))
 
 ## License
@@ -271,12 +297,12 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 
 ## Contributing
 
-Issues and PRs welcome once M0 lands. Contributors agree to the project's code of conduct and license terms.
+Issues and PRs welcome. Contributors agree to the project's code of conduct and license terms.
 
 Quick checklist for contributions:
 
-- Follows the project's code of conduct and license terms
-- New features include tests once the test suite lands
+- `npm run lint && npm run typecheck && npm test && npm run build` all pass
+- New features include unit/component tests, and RLS/RPC changes include an integration test
 - Documentation is updated (this README and `lafiya-docs`)
 
 ## Lafiya Organization
