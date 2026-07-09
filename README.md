@@ -283,13 +283,13 @@ Quick checklist for contributions:
 
 This project lives under the `lafiya-xyz` GitHub organization. This repo is one of five. If a change here touches a shared contract (below), call it out so the matching repo can be updated.
 
-| Repo                           | Role                                                                                      | Primary language     |
-| ------------------------------ | ----------------------------------------------------------------------------------------- | -------------------- |
-| **`.github`**                  | Organization profile README and contribution guidelines                                   | Markdown             |
-| **`lafiya-docs`**              | Concept note, data model, threat model, privacy design, funding/DPG materials, references | Markdown             |
-| **`lafiya-web`** _(this repo)_ | Patient + responder web app. Public emergency page, authed profile editor, QR generation  | TypeScript (Next.js) |
-| **`lafiya-contracts`**         | Soroban smart contracts (Rust): attestation registry + attester allowlist. Testnet first  | Rust (Soroban)       |
-| **`lafiya-verifier`**          | CHW verification tool. Begins as a route inside `lafiya-web`; split out only if it grows  | TypeScript (planned) |
+| Repo                                                                   | Role                                                                                      | Primary language     |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------- |
+| [`.github`](https://github.com/lafiya-xyz/.github)                     | Organization profile README and contribution guidelines                                   | Markdown             |
+| [`lafiya-docs`](https://github.com/lafiya-xyz/lafiya-docs)             | Concept note, data model, threat model, privacy design, funding/DPG materials, references | Markdown             |
+| [`lafiya-web`](https://github.com/lafiya-xyz/lafiya-web) _(this repo)_ | Patient + responder web app. Public emergency page, authed profile editor, QR generation  | TypeScript (Next.js) |
+| [`lafiya-contracts`](https://github.com/lafiya-xyz/lafiya-contracts)   | Soroban smart contracts (Rust): attestation registry + attester allowlist. Testnet first  | Rust (Soroban)       |
+| [`lafiya-verifier`](https://github.com/lafiya-xyz/lafiya-verifier)     | CHW verification tool. Begins as a route inside `lafiya-web`; split out only if it grows  | TypeScript (planned) |
 
 > Resist scaffolding empty repos. Two working repos (`lafiya-web`, `lafiya-contracts`) beat five half-built ones. Build one honest milestone at a time.
 
@@ -343,10 +343,13 @@ If you change a field name, type, or hashing scheme here, update the Rust struct
 
 ### Conventions for AI Agents
 
+An agent working in only one of the five repos above can't see the others' code, so this section exists to orient one dropped into any single repo without prior context:
+
 - Treat this section as the source of truth for **cross-repo** contracts. Each repo's own README covers repo-local conventions.
-- When a change in this repo affects a shared contract above, call it out explicitly so the corresponding change can be made in the other repo(s).
-- Never let personal health data reach an on-chain call — only hashes, attester identity, and timestamps belong in `lafiya-contracts` calls.
+- When a change in this repo affects a shared contract above, call it out explicitly so the corresponding change can be made in the other repo(s) — don't silently assume it'll happen separately.
+- Never let personal health data reach an on-chain call — only hashes, attester identity, and timestamps belong in `lafiya-contracts` calls. This is a hard invariant, not a style preference.
 - Keep attestation and health-record field names identical (same casing, same units) across TypeScript (`web`), Rust (`contracts`), and Markdown (`docs`) — translation layers are a common source of bugs.
+- If you land in `lafiya-docs`, read its data model doc before touching any patient-data field name anywhere in the org. If you land in `lafiya-contracts`, read the `Attestation` struct definition before changing the hash/attester/timestamp shape. If you land in `lafiya-verifier`, note it currently lives inside `lafiya-web` at `app/(auth)/profile` and the attestation-lookup code, not as a standalone repo yet.
 
 ## Support
 
