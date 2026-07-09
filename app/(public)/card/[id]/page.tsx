@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { computeRecordHash } from "@/lib/attestation/recordHash";
 import { createClient } from "@/lib/supabase/server";
+import { getAttestation } from "@/lib/stellar/attestation";
+
+import { VerifiedBadge } from "./verified-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -40,9 +44,13 @@ export default async function PublicCardPage({
   }
 
   const card = data[0];
+  const recordHash = computeRecordHash(card);
+  const attestation = await getAttestation(recordHash);
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 py-16">
+      <VerifiedBadge verified={attestation !== null} />
+
       <div className="flex items-center gap-4">
         {card.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- unknown remote host per-card, not worth allowlisting
