@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Dummy, non-secret values so lib/env.ts's zod validation passes at build
+  # time — next build loads every route's module graph (even dynamic ones)
+  # to collect its config, which runs this validation whether or not the
+  # route is ever rendered during the build itself.
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-build-only
+  SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-build-only
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+
+jobs:
+  test:
+    name: Lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    name: Integration tests (local Supabase)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+      - run: supabase start
+      - run: npm run test:integration
+      - run: supabase stop
+        if: always()
