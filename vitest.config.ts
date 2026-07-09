@@ -15,5 +15,6 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["**/node_modules/**", "**/tests/integration/**"],
+    clearMocks: true,
   },
 });
