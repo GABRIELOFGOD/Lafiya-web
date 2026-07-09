@@ -241,8 +241,9 @@ Run `npm run lint && npm run typecheck && npm run build` for the same checks CI 
 
 ### M0 — Public Card _(testnet)_
 
-- [x] Patient can create a profile via `lafiya-web`
-- [x] Public, read-only emergency page reachable by QR
+- [x] Patient can create a profile via `lafiya-web` (auth, and a field-by-field editor: identity, blood group/genotype, allergies/medications, chronic conditions, up to 3 emergency contacts, optional photo)
+- [x] Public, read-only emergency page reachable by QR, with a verified-indicator placeholder ahead of real M1 attestation
+- [x] Unit, component, and integration test coverage, with CI on every push/PR
 - [ ] Deployed to Vercel against Stellar testnet config
 
 ### M1 — Attestation
