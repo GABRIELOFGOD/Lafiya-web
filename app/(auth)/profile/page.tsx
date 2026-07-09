@@ -36,7 +36,7 @@ export default async function ProfilePage() {
         <SignOutButton />
       </div>
 
-      <ProfileForm profile={profile} />
+      <ProfileForm profile={profile} userId={user.id} />
     </div>
   );
 }

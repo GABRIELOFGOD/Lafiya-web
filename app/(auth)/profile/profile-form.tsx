@@ -7,9 +7,16 @@ import type { ProfileRow } from "@/lib/supabase/types";
 
 import { upsertProfile } from "./actions";
 import { EmergencyContactsField } from "./emergency-contacts-field";
+import { PhotoUploadField } from "./photo-upload-field";
 import { TagListField } from "./tag-list-field";
 
-export function ProfileForm({ profile }: { profile: ProfileRow | null }) {
+export function ProfileForm({
+  profile,
+  userId,
+}: {
+  profile: ProfileRow | null;
+  userId: string;
+}) {
   const [state, formAction, isPending] = useActionState(
     upsertProfile,
     undefined,
@@ -17,6 +24,11 @@ export function ProfileForm({ profile }: { profile: ProfileRow | null }) {
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
+      <PhotoUploadField
+        userId={userId}
+        initialUrl={profile?.photo_url ?? null}
+      />
+
       <div>
         <label
           htmlFor="name"

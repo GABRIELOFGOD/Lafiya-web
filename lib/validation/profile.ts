@@ -36,6 +36,7 @@ export const profileFormSchema = z.object({
       "Enter a valid date",
     ),
   language: z.string().trim().max(100).optional(),
+  photoUrl: z.string().trim().max(2048).optional(),
   bloodGroup: z.enum(BLOOD_GROUPS),
   genotype: z.enum(GENOTYPES),
   allergies: z.array(z.string().trim().min(1).max(200)).max(20),
