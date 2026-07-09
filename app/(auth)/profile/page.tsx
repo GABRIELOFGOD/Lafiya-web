@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 
 import { SignOutButton } from "../signout/sign-out-button";
+import { ProfileForm } from "./profile-form";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -35,15 +36,7 @@ export default async function ProfilePage() {
         <SignOutButton />
       </div>
 
-      {profile ? (
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Card created. The field-by-field editor for updating it lands next.
-        </p>
-      ) : (
-        <p className="text-zinc-600 dark:text-zinc-400">
-          You don&apos;t have a card yet. The editor to create one lands next.
-        </p>
-      )}
+      <ProfileForm profile={profile} />
     </div>
   );
 }
