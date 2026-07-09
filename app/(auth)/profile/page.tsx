@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
+import { getBaseUrl } from "@/lib/url/getBaseUrl";
 
 import { SignOutButton } from "../signout/sign-out-button";
 import { ProfileForm } from "./profile-form";
+import { QrCardDisplay } from "./qr-card-display";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -35,6 +37,12 @@ export default async function ProfilePage() {
         </div>
         <SignOutButton />
       </div>
+
+      {profile ? (
+        <QrCardDisplay
+          cardUrl={`${await getBaseUrl()}/card/${profile.card_public_id}`}
+        />
+      ) : null}
 
       <ProfileForm profile={profile} userId={user.id} />
     </div>
