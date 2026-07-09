@@ -327,9 +327,10 @@ If you change a field name, type, or hashing scheme here, update the Rust struct
 
 **2. Emergency data model** — the field list in [Data Model](#data-model-emergency-subset) is the canonical decision-relevant subset. `lafiya-docs` mirrors it in the full data model / threat model; changing a field name here requires an update there.
 
-**3. Environment variables / config keys** — `.env.example` (planned) will define the cross-repo keys:
+**3. Environment variables / config keys** — `.env.example` defines the cross-repo keys:
 
-- `SUPABASE_URL` / `SUPABASE_ANON_KEY` — the off-chain encrypted store
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — the off-chain encrypted store; safe for the browser, scoped by RLS
+- `SUPABASE_SERVICE_ROLE_KEY` — server-only, bypasses RLS; never exposed to the browser
 - `STELLAR_NETWORK_PASSPHRASE` — must match the network the contracts are deployed on
 - `SOROBAN_RPC_URL` — Soroban RPC endpoint (testnet first)
 - `ATTESTATION_CONTRACT_ID` — the deployed `lafiya-contracts` attestation registry contract id
