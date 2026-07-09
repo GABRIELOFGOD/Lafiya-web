@@ -2,6 +2,17 @@
  * Hand-authored types mirroring supabase/migrations/*.sql. There is no
  * `supabase gen types` step in this project (no network dependency on a
  * hosted project); keep this file in sync with the migrations by hand.
+ *
+ * Every type in this file must be a `type` alias, never an `interface` —
+ * including ones only referenced from inside `Database`, like `ProfileRow`.
+ * supabase-js's SupabaseClient generic checks `Schema extends
+ * Record<string, GenericTable>`-shaped constraints internally, and
+ * TypeScript's structural `extends` only recognizes plain object type
+ * aliases as satisfying an index-signature type like `Record<string, X>`.
+ * An `interface` with identical members does not, anywhere in the tree,
+ * and silently collapses every query's result type to `never` with no
+ * error at the `Database` definition site itself — the error only
+ * surfaces later, at each `.from(...).select(...)` call.
  */
 
 export type BloodGroup =
@@ -9,14 +20,14 @@ export type BloodGroup =
 
 export type Genotype = "AA" | "AS" | "SS" | "SC" | "AC" | "unknown";
 
-export interface EmergencyContact {
+export type EmergencyContact = {
   name: string;
   phone: string;
   relationship: string;
-}
+};
 
 /** Row shape of public.profiles. */
-export interface ProfileRow {
+export type ProfileRow = {
   user_id: string;
   card_public_id: string;
   name: string;
@@ -31,10 +42,10 @@ export interface ProfileRow {
   emergency_contacts: EmergencyContact[];
   created_at: string;
   updated_at: string;
-}
+};
 
 /** Return row shape of public.get_emergency_card(p_card_id uuid). */
-export interface EmergencyCardRow {
+export type EmergencyCardRow = {
   name: string;
   age: number | null;
   photo_url: string | null;
@@ -45,14 +56,21 @@ export interface EmergencyCardRow {
   chronic_conditions: string[];
   emergency_contacts: EmergencyContact[];
   language: string | null;
-}
+};
 
 /**
  * Matches the shape @supabase/supabase-js's `createClient<Database>()`
  * generic expects, so `.from("profiles")` and `.rpc("get_emergency_card")`
  * are typed without a code-generation step.
+ *
+ * Must be a `type` alias, not an `interface`: supabase-js's SupabaseClient
+ * checks `Schema extends Record<string, GenericTable>`-shaped constraints
+ * internally, and TypeScript's structural `extends` check only recognizes
+ * plain object type aliases as satisfying an index-signature type like
+ * `Record<string, X>` — an `interface` with the same members does not,
+ * and silently collapses every query's result type to `never`.
  */
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       profiles: {
@@ -62,6 +80,7 @@ export interface Database {
             emergency_contacts?: EmergencyContact[];
           };
         Update: Partial<Omit<ProfileRow, "user_id">>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
@@ -76,4 +95,4 @@ export interface Database {
       genotype_enum: Genotype;
     };
   };
-}
+};
