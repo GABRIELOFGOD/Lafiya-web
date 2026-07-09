@@ -77,3 +77,9 @@ with check (auth.uid() = user_id);
 create policy "profiles_delete_own"
 on public.profiles for delete
 using (auth.uid() = user_id);
+
+-- RLS policies alone are not sufficient: Postgres also requires a table-level
+-- GRANT before PostgREST roles can touch the table at all (Supabase no
+-- longer auto-exposes new tables to the Data API roles by default). No
+-- grant to anon here, on purpose — see the header comment.
+grant select, insert, update, delete on public.profiles to authenticated;
