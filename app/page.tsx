@@ -13,8 +13,8 @@ export default function Home() {
         <p className="max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
           Lafiya is a free, patient-owned emergency health card. Blood group,
           genotype, allergies, and current medications travel with you as a
-          scannable QR code, work offline, and can be cryptographically
-          verified by a health worker.
+          scannable QR code, work offline, and can be cryptographically verified
+          by a health worker.
         </p>
         <div className="flex flex-col gap-4 sm:flex-row">
           <Link

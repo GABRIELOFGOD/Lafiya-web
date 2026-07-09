@@ -7,7 +7,7 @@
 
 A patient-owned emergency health card on Stellar — the vitals that decide emergency treatment travel with the patient as a scannable QR code, work offline, and can be cryptographically verified by a health worker so a first responder can trust them on the spot.
 
-*Lafiya* is Hausa for health, safety, and wellbeing.
+_Lafiya_ is Hausa for health, safety, and wellbeing.
 
 > **Status:** Pre-alpha · Stellar **testnet** · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
 
@@ -94,13 +94,13 @@ The Soroban attestation registry, attester allowlist, and CHW verifier tool live
 
 Lafiya Proof is the Stellar-native trust and payment layer underneath the Lafiya Card:
 
-| Layer | Mechanism | What it guarantees |
-| --- | --- | --- |
-| **Attestation** | Soroban on-chain record: hash of the record + attester's identity + a timestamp | A responder can cryptographically confirm a real, allowlisted health worker verified this exact record, without the data ever being exposed |
-| **Incentive rails** | USDC on Stellar, paid per verified registration | Near-zero-fee, cross-border micropayments make last-mile CHW outreach economically viable |
-| **Transparent funding** | Grant and donor funds flow on-chain into the CHW incentive pool | Every donated dollar maps to a countable, auditable number of verified cards |
+| Layer                   | Mechanism                                                                       | What it guarantees                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Attestation**         | Soroban on-chain record: hash of the record + attester's identity + a timestamp | A responder can cryptographically confirm a real, allowlisted health worker verified this exact record, without the data ever being exposed |
+| **Incentive rails**     | USDC on Stellar, paid per verified registration                                 | Near-zero-fee, cross-border micropayments make last-mile CHW outreach economically viable                                                   |
+| **Transparent funding** | Grant and donor funds flow on-chain into the CHW incentive pool                 | Every donated dollar maps to a countable, auditable number of verified cards                                                                |
 
-> **Core design principle.** No personal health data ever touches the blockchain. Personal data lives in an encrypted, access-controlled off-chain database. Stellar holds only hashes, attestations, and payments. This is what keeps Lafiya both privacy-respecting and regulator-compatible — and it is why Stellar is a *core* component here, not a database substitute.
+> **Core design principle.** No personal health data ever touches the blockchain. Personal data lives in an encrypted, access-controlled off-chain database. Stellar holds only hashes, attestations, and payments. This is what keeps Lafiya both privacy-respecting and regulator-compatible — and it is why Stellar is a _core_ component here, not a database substitute.
 
 ### Why Stellar (core, not shoehorned)
 
@@ -283,13 +283,13 @@ Quick checklist for contributions:
 
 This project lives under the `lafiya-xyz` GitHub organization. This repo is one of five. If a change here touches a shared contract (below), call it out so the matching repo can be updated.
 
-| Repo | Role | Primary language |
-| --- | --- | --- |
-| **`.github`** | Organization profile README and contribution guidelines | Markdown |
-| **`lafiya-docs`** | Concept note, data model, threat model, privacy design, funding/DPG materials, references | Markdown |
-| **`lafiya-web`** _(this repo)_ | Patient + responder web app. Public emergency page, authed profile editor, QR generation | TypeScript (Next.js) |
-| **`lafiya-contracts`** | Soroban smart contracts (Rust): attestation registry + attester allowlist. Testnet first | Rust (Soroban) |
-| **`lafiya-verifier`** | CHW verification tool. Begins as a route inside `lafiya-web`; split out only if it grows | TypeScript (planned) |
+| Repo                           | Role                                                                                      | Primary language     |
+| ------------------------------ | ----------------------------------------------------------------------------------------- | -------------------- |
+| **`.github`**                  | Organization profile README and contribution guidelines                                   | Markdown             |
+| **`lafiya-docs`**              | Concept note, data model, threat model, privacy design, funding/DPG materials, references | Markdown             |
+| **`lafiya-web`** _(this repo)_ | Patient + responder web app. Public emergency page, authed profile editor, QR generation  | TypeScript (Next.js) |
+| **`lafiya-contracts`**         | Soroban smart contracts (Rust): attestation registry + attester allowlist. Testnet first  | Rust (Soroban)       |
+| **`lafiya-verifier`**          | CHW verification tool. Begins as a route inside `lafiya-web`; split out only if it grows  | TypeScript (planned) |
 
 > Resist scaffolding empty repos. Two working repos (`lafiya-web`, `lafiya-contracts`) beat five half-built ones. Build one honest milestone at a time.
 
@@ -363,11 +363,11 @@ These works directly informed Lafiya's design and are the intended reading for c
 
 **Books**
 
-- Shortliffe, E. H., & Cimino, J. J. (Eds.). (2021). *Biomedical Informatics: Computer Applications in Health Care and Biomedicine* (5th ed.). Springer. — Grounds the clinical data model: which fields are decision-relevant in an emergency, and how health records are structured and coded.
-- Preukschat, A., & Reed, D. (2021). *Self-Sovereign Identity: Decentralized Digital Identity and Verifiable Credentials*. Manning. — The blueprint for Lafiya Proof: issuer/holder/verifier roles, verifiable credentials, hash-based attestation, key management, and offline verification.
-- Toyama, K. (2015). *Geek Heresy: Rescuing Social Change from the Cult of Technology*. PublicAffairs. — Keeps the project honest: technology amplifies human capacity rather than replacing it, which is why Lafiya centers community health workers, not the app.
-- Kleppmann, M. (2017). *Designing Data-Intensive Applications*. O'Reilly. — Informs the off-chain data layer: reliable and secure storage, encryption, and the boundary between what lives in the database and what is anchored on-chain.
-- Martin, R. C. (2017). *Clean Architecture: A Craftsman's Guide to Software Structure and Design*. Prentice Hall. — Discipline for an AI-assisted codebase: clear boundaries so the app, the contracts, and the data layer stay independently maintainable.
+- Shortliffe, E. H., & Cimino, J. J. (Eds.). (2021). _Biomedical Informatics: Computer Applications in Health Care and Biomedicine_ (5th ed.). Springer. — Grounds the clinical data model: which fields are decision-relevant in an emergency, and how health records are structured and coded.
+- Preukschat, A., & Reed, D. (2021). _Self-Sovereign Identity: Decentralized Digital Identity and Verifiable Credentials_. Manning. — The blueprint for Lafiya Proof: issuer/holder/verifier roles, verifiable credentials, hash-based attestation, key management, and offline verification.
+- Toyama, K. (2015). _Geek Heresy: Rescuing Social Change from the Cult of Technology_. PublicAffairs. — Keeps the project honest: technology amplifies human capacity rather than replacing it, which is why Lafiya centers community health workers, not the app.
+- Kleppmann, M. (2017). _Designing Data-Intensive Applications_. O'Reilly. — Informs the off-chain data layer: reliable and secure storage, encryption, and the boundary between what lives in the database and what is anchored on-chain.
+- Martin, R. C. (2017). _Clean Architecture: A Craftsman's Guide to Software Structure and Design_. Prentice Hall. — Discipline for an AI-assisted codebase: clear boundaries so the app, the contracts, and the data layer stay independently maintainable.
 
 **Standards & documentation**
 
