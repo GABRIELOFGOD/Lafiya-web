@@ -6,6 +6,7 @@ import { BLOOD_GROUPS, GENOTYPES } from "@/lib/validation/profile";
 import type { ProfileRow } from "@/lib/supabase/types";
 
 import { upsertProfile } from "./actions";
+import { TagListField } from "./tag-list-field";
 
 export function ProfileForm({ profile }: { profile: ProfileRow | null }) {
   const [state, formAction, isPending] = useActionState(
@@ -108,6 +109,20 @@ export function ProfileForm({ profile }: { profile: ProfileRow | null }) {
           </select>
         </div>
       </div>
+
+      <TagListField
+        name="allergies"
+        label="Allergies"
+        placeholder="e.g. Penicillin"
+        initialValues={profile?.allergies ?? []}
+      />
+
+      <TagListField
+        name="medications"
+        label="Current medications"
+        placeholder="e.g. Insulin"
+        initialValues={profile?.medications ?? []}
+      />
 
       {state?.error ? (
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>

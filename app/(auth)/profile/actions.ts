@@ -11,6 +11,14 @@ export interface ProfileFormState {
   success?: boolean;
 }
 
+/** Reads a repeated text-list field, dropping blank rows left by the +/- UI. */
+function getTagList(formData: FormData, name: string): string[] {
+  return formData
+    .getAll(name)
+    .map((value) => value.toString().trim())
+    .filter((value) => value.length > 0);
+}
+
 /**
  * Fills in defaults for fields the UI doesn't expose yet (grown field group
  * by field group across several commits) from the existing row, so a save
@@ -58,6 +66,8 @@ export async function upsertProfile(
     language: formData.get("language") || undefined,
     bloodGroup: formData.get("bloodGroup") || undefined,
     genotype: formData.get("genotype") || undefined,
+    allergies: getTagList(formData, "allergies"),
+    medications: getTagList(formData, "medications"),
   });
 
   if (!parsed.success) {
