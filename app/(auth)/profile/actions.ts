@@ -20,6 +20,34 @@ function getTagList(formData: FormData, name: string): string[] {
 }
 
 /**
+ * Emergency contacts are submitted as one JSON hidden input (see
+ * EmergencyContactsField) rather than indexed field names. Blank rows (all
+ * three sub-fields empty) are dropped the same way tag-list rows are.
+ */
+function getEmergencyContacts(formData: FormData): unknown[] {
+  const raw = formData.get("emergencyContactsJson");
+  if (typeof raw !== "string") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(
+      (contact) =>
+        contact &&
+        typeof contact === "object" &&
+        [contact.name, contact.phone, contact.relationship].some(
+          (value) => typeof value === "string" && value.trim().length > 0,
+        ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Fills in defaults for fields the UI doesn't expose yet (grown field group
  * by field group across several commits) from the existing row, so a save
  * never silently wipes data the current form doesn't render a control for.
@@ -68,6 +96,8 @@ export async function upsertProfile(
     genotype: formData.get("genotype") || undefined,
     allergies: getTagList(formData, "allergies"),
     medications: getTagList(formData, "medications"),
+    chronicConditions: getTagList(formData, "chronicConditions"),
+    emergencyContacts: getEmergencyContacts(formData),
   });
 
   if (!parsed.success) {

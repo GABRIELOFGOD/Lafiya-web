@@ -6,6 +6,7 @@ import { BLOOD_GROUPS, GENOTYPES } from "@/lib/validation/profile";
 import type { ProfileRow } from "@/lib/supabase/types";
 
 import { upsertProfile } from "./actions";
+import { EmergencyContactsField } from "./emergency-contacts-field";
 import { TagListField } from "./tag-list-field";
 
 export function ProfileForm({ profile }: { profile: ProfileRow | null }) {
@@ -122,6 +123,17 @@ export function ProfileForm({ profile }: { profile: ProfileRow | null }) {
         label="Current medications"
         placeholder="e.g. Insulin"
         initialValues={profile?.medications ?? []}
+      />
+
+      <TagListField
+        name="chronicConditions"
+        label="Chronic conditions / implants"
+        placeholder="e.g. Asthma"
+        initialValues={profile?.chronic_conditions ?? []}
+      />
+
+      <EmergencyContactsField
+        initialValues={profile?.emergency_contacts ?? []}
       />
 
       {state?.error ? (
