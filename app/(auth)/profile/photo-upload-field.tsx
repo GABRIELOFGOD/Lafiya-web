@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -21,6 +21,7 @@ export function PhotoUploadField({
   userId: string;
   initialUrl: string | null;
 }) {
+  void userId;
   const [photoUrl, setPhotoUrl] = useState(initialUrl);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,29 +45,33 @@ export function PhotoUploadField({
     setError(null);
     setIsUploading(true);
 
-    const extension =
-      file.type === "image/png"
-        ? "png"
-        : file.type === "image/jpeg"
-          ? "jpg"
-          : "webp";
-    const path = `${userId}/photo.${extension}`;
-    const supabase = createClient();
+    const formData = new FormData();
+    formData.append("file", file);
 
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(path, file, { upsert: true, contentType: file.type });
+    try {
+      const response = await fetch("/api/profile/photo", {
+        method: "POST",
+        body: formData,
+      });
 
-    if (uploadError) {
-      setError(uploadError.message);
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setError(
+          result.error || `Upload failed with status ${response.status}`,
+        );
+        setIsUploading(false);
+        return;
+      }
+
+      const { publicUrl } = await response.json();
+      // Cache-bust so the new photo shows immediately after an overwrite.
+      setPhotoUrl(`${publicUrl}?updated=${Date.now()}`);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg || "An unexpected error occurred.");
+    } finally {
       setIsUploading(false);
-      return;
     }
-
-    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    // Cache-bust so the new photo shows immediately after an overwrite.
-    setPhotoUrl(`${data.publicUrl}?updated=${Date.now()}`);
-    setIsUploading(false);
   }
 
   return (
