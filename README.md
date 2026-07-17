@@ -233,6 +233,7 @@ npm run test:integration  # RLS + RPC tests against real local Postgres
 - [x] Row-Level Security policies enforce patient-only read/write access (plus a table-level GRANT, which RLS alone doesn't provide)
 - [x] QR generation produces a valid, input-dependent data URL
 - [x] Verified-indicator rendering for both the verified and not-yet-verified states
+- [x] Attestation lookup Route Handler (`/api/attestation/[recordHash]`): valid/unknown hashes, regex boundary validation, and response shape stability
 - [x] `get_emergency_card` RPC contract: valid id, unknown id, anon-callable, no extra columns leak
 
 Run `npm run lint && npm run typecheck && npm run build` for the same checks CI runs on every push/PR (see `.github/workflows/ci.yml`).
