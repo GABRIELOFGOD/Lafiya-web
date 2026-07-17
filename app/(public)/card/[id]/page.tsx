@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
 import { computeRecordHash } from "@/lib/attestation/recordHash";
 import { createClient } from "@/lib/supabase/server";
@@ -155,6 +156,11 @@ export default async function PublicCardPage({
       <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
         Not a medical device. Not a substitute for professional medical
         judgment.
+      </p>
+      <p className="text-xs text-zinc-500 dark:text-zinc-500">
+        <Link href="/privacy" className="underline">Privacy</Link>
+        {" · "}
+        <Link href="/terms" className="underline">Terms</Link>
       </p>
     </div>
   );
