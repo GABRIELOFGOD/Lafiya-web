@@ -42,6 +42,6 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10",
-    "@lhci/cli": "^0.18.0"
+    "@lhci/cli": "^0.15.1"
   }
 }
