@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { computeRecordHash } from "@/lib/attestation/recordHash";
@@ -53,8 +54,7 @@ export default async function PublicCardPage({
 
       <div className="flex items-center gap-4">
         {card.photo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- unknown remote host per-card, not worth allowlisting
-          <img
+          <Image
             src={card.photo_url}
             alt=""
             width={80}
