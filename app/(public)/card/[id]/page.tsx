@@ -56,9 +56,18 @@ export default async function PublicCardPage({
           // eslint-disable-next-line @next/next/no-img-element -- unknown remote host per-card, not worth allowlisting
           <img
             src={card.photo_url}
-            alt=""
+            // Non-empty alt so screen readers announce the patient's photo.
+            // The name is announced separately by the h1 that follows, so
+            // "photo" alone is sufficient to avoid duplication.
+            alt="Patient photo"
             width={80}
             height={80}
+            // Above-the-fold; the responder needs this immediately.
+            // loading="eager" + fetchpriority="high" tell the browser to
+            // fetch this image as early as possible rather than deferring it.
+            loading="eager"
+            // fetchPriority is the React camelCase prop for the HTML attribute.
+            fetchPriority="high"
             className="h-20 w-20 rounded-full object-cover"
           />
         ) : null}
