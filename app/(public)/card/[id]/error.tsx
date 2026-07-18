@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
 type UnavailableStateProps = {
