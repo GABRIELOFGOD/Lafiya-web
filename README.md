@@ -149,6 +149,8 @@ Everything else (full history, documents, notes) stays private, behind authentic
 - Patients opt into exactly what appears on their public page.
 - No health data on-chain; only non-reversible hashes and attestations.
 
+For the current threat model, access paths, and accepted tradeoffs across the public card, attestation lookup, avatars bucket, and authenticated profile editor, see the shared document in the separate docs repo: [lafiya-docs threat model](../lafiya-docs/threat-model.md).
+
 ## Repository Structure
 
 This repository (`lafiya-web`) contains the patient + responder web app. The Soroban contracts, docs, and CHW verifier tool live in separate repos — see [Lafiya Organization](#lafiya-organization) below.
