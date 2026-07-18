@@ -91,4 +91,40 @@ describe("PublicCardPage", () => {
       PublicCardPage({ params: Promise.resolve({ id: VALID_ID }) }),
     ).rejects.toThrow("NEXT_NOT_FOUND");
   });
+
+  it("renders with unavailable status when attestation lookup fails", async () => {
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getAttestation).mockRejectedValue(new Error("RPC failed"));
+
+    const jsx = await PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    render(jsx);
+
+    expect(screen.getByText("Amina Yusuf")).toBeInTheDocument();
+    expect(screen.getByText("Verification status unavailable")).toBeInTheDocument();
+  });
+
+  it("renders with unavailable status when attestation lookup times out", async () => {
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getAttestation).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(null), 5000))
+    );
+
+    vi.useFakeTimers();
+
+    const pagePromise = PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    const jsx = await pagePromise;
+    render(jsx);
+
+    vi.useRealTimers();
+
+    expect(screen.getByText("Amina Yusuf")).toBeInTheDocument();
+    expect(screen.getByText("Verification status unavailable")).toBeInTheDocument();
+  });
 });

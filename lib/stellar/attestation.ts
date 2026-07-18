@@ -24,8 +24,59 @@ const MOCK_ATTESTATIONS = new Map<string, Attestation>([
   ],
 ]);
 
+export class CircuitBreaker {
+  private state: "CLOSED" | "OPEN" | "HALF-OPEN" = "CLOSED";
+  private consecutiveFailures = 0;
+  private lastFailureTime = 0;
+  private failureThreshold = 3;
+  private cooldownPeriod = 30000; // 30 seconds
+
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
+    const now = Date.now();
+    if (this.state === "OPEN") {
+      if (now - this.lastFailureTime >= this.cooldownPeriod) {
+        this.state = "HALF-OPEN";
+      } else {
+        throw new Error("Circuit breaker is OPEN");
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.success();
+      return result;
+    } catch (error) {
+      this.failure();
+      throw error;
+    }
+  }
+
+  private success() {
+    this.consecutiveFailures = 0;
+    this.state = "CLOSED";
+  }
+
+  private failure() {
+    this.consecutiveFailures++;
+    this.lastFailureTime = Date.now();
+    if (this.consecutiveFailures >= this.failureThreshold) {
+      this.state = "OPEN";
+    }
+  }
+
+  reset() {
+    this.state = "CLOSED";
+    this.consecutiveFailures = 0;
+    this.lastFailureTime = 0;
+  }
+}
+
+export const attestationBreaker = new CircuitBreaker();
+
 export async function getAttestation(
   recordHash: string,
 ): Promise<Attestation | null> {
-  return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+  return attestationBreaker.execute(async () => {
+    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+  });
 }
