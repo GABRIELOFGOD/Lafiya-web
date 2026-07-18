@@ -306,6 +306,23 @@ Quick checklist for contributions:
 - New features include unit/component tests, and RLS/RPC changes include an integration test
 - Documentation is updated (this README and `lafiya-docs`)
 
+### Operations & Observability
+
+Lafiya integrates structured JSON logging and Sentry error tracking for observability.
+
+#### Rules for Logging
+
+1. **Never Log Patient Health Data:** Under no circumstances should any field from the emergency data model or authentication credentials be logged.
+2. **Central Redaction:** The logging utility (`lib/logging/logger.ts`) automatically and recursively redacts sensitive fields case-insensitively. This includes `name`, `age`, `dateOfBirth`/`date_of_birth`, `bloodGroup`/`blood_group`, `genotype`, `allergies`, `medications`, `chronicConditions`/`chronic_conditions`, `emergencyContacts`/`emergency_contacts`, `phone`, `relationship`, `language`, `photoUrl`/`photo_url`, `email`, and `password`.
+3. **Structured JSON Logs:** All server logs must use the `logInfo` and `logError` wrapper functions from `@/lib/logging/logger` so that they are output as queryable structured JSON and sent to Sentry.
+
+#### Sentry Configuration
+
+To configure Sentry in your environment, define the following variables:
+
+- `NEXT_PUBLIC_SENTRY_DSN` - Sentry client/server DSN endpoint.
+- `SENTRY_AUTH_TOKEN` - (Optional) Sentry build-time authentication token. If not provided, source map uploads are dynamically disabled during builds to prevent compilation failure.
+
 ## Lafiya Organization
 
 This project lives under the `lafiya-xyz` GitHub organization. This repo is one of five. If a change here touches a shared contract (below), call it out so the matching repo can be updated.

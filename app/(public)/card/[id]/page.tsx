@@ -7,6 +7,8 @@ import { getAttestation } from "@/lib/stellar/attestation";
 
 import { VerifiedBadge } from "./verified-badge";
 
+import { logError } from "@/lib/logging/logger";
+
 export const dynamic = "force-dynamic";
 
 // This page is unauthenticated and reachable by anyone with the link (that's
@@ -39,13 +41,31 @@ export default async function PublicCardPage({
     p_card_id: id,
   });
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    logError("Failed to fetch emergency card from Supabase RPC", error, {
+      route: "/card/[id]",
+      cardId: id,
+    });
+    notFound();
+  }
+
+  if (!data || data.length === 0) {
     notFound();
   }
 
   const card = data[0];
   const recordHash = computeRecordHash(card);
-  const attestation = await getAttestation(recordHash);
+
+  let attestation = null;
+  try {
+    attestation = await getAttestation(recordHash);
+  } catch (err) {
+    logError("Failed to retrieve attestation from Stellar", err, {
+      route: "/card/[id]",
+      recordHash,
+    });
+    throw err;
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 py-16">

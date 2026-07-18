@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 
+import { logError } from "@/lib/logging/logger";
+
 const signUpSchema = z.object({
   email: z.email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
@@ -35,6 +37,10 @@ export async function signUp(
   });
 
   if (error) {
+    logError("Sign up failed", error, {
+      route: "/signup (action: signUp)",
+      email: parsed.data.email,
+    });
     return { error: error.message };
   }
 
