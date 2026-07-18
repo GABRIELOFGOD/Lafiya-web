@@ -17,13 +17,17 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 export function PhotoUploadField({
   userId,
   initialUrl,
+  error: serverError,
 }: {
   userId: string;
   initialUrl: string | null;
+  error?: string;
 }) {
   const [photoUrl, setPhotoUrl] = useState(initialUrl);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  const activeError = error || serverError;
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -97,12 +101,16 @@ export function PhotoUploadField({
             accept="image/png,image/jpeg,image/webp"
             onChange={handleFileChange}
             disabled={isUploading}
+            aria-invalid={activeError ? "true" : undefined}
+            aria-describedby={activeError ? "photoUrl-error" : undefined}
             className="hidden"
           />
         </label>
       </div>
-      {error ? (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
+      {activeError ? (
+        <p id="photoUrl-error" role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {activeError}
+        </p>
       ) : null}
     </div>
   );

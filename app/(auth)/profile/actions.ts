@@ -8,6 +8,7 @@ import { profileFormSchema } from "@/lib/validation/profile";
 
 export interface ProfileFormState {
   error?: string;
+  errors?: Record<string, string>;
   success?: boolean;
 }
 
@@ -103,7 +104,17 @@ export async function upsertProfile(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    const fieldErrors: Record<string, string> = {};
+    parsed.error.issues.forEach((issue) => {
+      const field = issue.path[0];
+      if (typeof field === "string" && !fieldErrors[field]) {
+        fieldErrors[field] = issue.message;
+      }
+    });
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+      errors: fieldErrors,
+    };
   }
 
   const { error } = await supabase.from("profiles").upsert({
