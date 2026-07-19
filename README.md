@@ -9,7 +9,7 @@ A patient-owned emergency health card on Stellar — the vitals that decide emer
 
 _Lafiya_ is Hausa for health, safety, and wellbeing.
 
-> **Status:** Pre-alpha · Stellar **testnet** · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
+> **Status:** Pre-alpha · Stellar **testnet** · Live: [lafiya-web.vercel.app](https://lafiya-web.vercel.app) · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
 
 ## Overview
 
@@ -237,6 +237,42 @@ npm run test:integration  # RLS + RPC tests against real local Postgres
 
 Run `npm run lint && npm run typecheck && npm run build` for the same checks CI runs on every push/PR (see `.github/workflows/ci.yml`).
 
+## Deployment & Vercel Configuration
+
+Lafiya is deployed on Vercel and integrates with a hosted Supabase project for user management, profiles, and image storage, and connects to the Stellar Testnet.
+
+### 1. Database Provisioning (Supabase)
+To set up a new production/staging database:
+1. Create a project in [Supabase](https://supabase.com).
+2. Install the Supabase CLI locally and link it to your project:
+   ```bash
+   npx supabase link --project-ref <your-supabase-project-ref>
+   ```
+3. Run the database migrations against the hosted project:
+   ```bash
+   npx supabase db push
+   ```
+4. Set up an `avatars` storage bucket in the Supabase dashboard and make it public (so patient avatars can be served).
+
+### 2. Environment Variables Configuration
+Configure the following environment variables in your Vercel Project Settings (`Settings > Environment Variables`):
+
+| Variable Name | Environment(s) | Description / Value |
+| :--- | :--- | :--- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Production & Preview | The API URL of your hosted Supabase project. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production & Preview | The anon/public API key of your hosted Supabase project. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Production & Preview | The service_role secret key (never exposed to client). |
+| `STELLAR_NETWORK_PASSPHRASE` | Production & Preview | `"Test SDF Network ; September 2015"` (Stellar Testnet). |
+| `SOROBAN_RPC_URL` | Production & Preview | `https://soroban-testnet.stellar.org` (Soroban testnet RPC endpoint). |
+| `ATTESTATION_CONTRACT_ID` | Production & Preview | The contract ID of your deployed `lafiya-contracts` registry (once available). |
+
+*Note: All values must be configured for both Production and Preview environments to ensure branch builds pass Zod schema validation during deployment.*
+
+### 3. Preview-Deployment Data-Isolation Strategy
+We use a **Shared Testnet Database** strategy for all Vercel Preview Deployments (such as Pull Requests) rather than provisioning ephemeral databases per PR.
+* **Why this is chosen:** Ephemeral databases (automated creation and destruction of Supabase projects on demand) introduce high operational complexity, require automated API keys, and easily hit the limits of Supabase free tier projects.
+* **Mitigation of Collisions:** Since profiles are isolated by authenticated user IDs (enforced by Supabase Row-Level Security), testers can isolate their preview-deployment testing by creating unique user accounts (e.g. using distinct emails like `tester+pr12@example.com`).
+
 ## Roadmap
 
 ### M0 — Public Card _(testnet)_
@@ -244,7 +280,7 @@ Run `npm run lint && npm run typecheck && npm run build` for the same checks CI 
 - [x] Patient can create a profile via `lafiya-web` (auth, and a field-by-field editor: identity, blood group/genotype, allergies/medications, chronic conditions, up to 3 emergency contacts, optional photo)
 - [x] Public, read-only emergency page reachable by QR, with a verified-indicator placeholder ahead of real M1 attestation
 - [x] Unit, component, and integration test coverage, with CI on every push/PR
-- [ ] Deployed to Vercel against Stellar testnet config
+- [x] Deployed to Vercel against Stellar testnet config
 
 ### M1 — Attestation
 
