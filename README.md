@@ -383,6 +383,7 @@ An agent working in only one of the five repos above can't see the others' code,
 For issues and questions:
 
 - GitHub Issues: [Create an issue](https://github.com/lafiya-xyz/lafiya-web/issues)
+- SECURITY policy: [SECURITY.md](SECURITY.md)
 
 ## Disclaimer
 
