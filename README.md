@@ -334,13 +334,7 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 
 ## Contributing
 
-Issues and PRs welcome. Contributors agree to the project's code of conduct and license terms.
-
-Quick checklist for contributions:
-
-- `npm run lint && npm run typecheck && npm test && npm run build` all pass
-- New features include unit/component tests, and RLS/RPC changes include an integration test
-- Documentation is updated (this README and `lafiya-docs`)
+We welcome contributions to Lafiya! Please read our [Contributing Guide](CONTRIBUTING.md) for local setup, development guidelines, database migration instructions, and code conventions before submitting a pull request.
 
 ## Lafiya Organization
 
