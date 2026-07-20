@@ -46,14 +46,16 @@ export default async function PublicCardPage({
   const card = data[0];
   const recordHash = computeRecordHash(card);
 
-  let attestationStatus: "verified" | "not_verified" | "unavailable" = "not_verified";
+  // getAttestation enforces its own ATTESTATION_TIMEOUT_MS deadline and is
+  // wrapped in a circuit breaker — repeated failures or timeouts will cause
+  // it to fast-fail immediately so card-page latency stays bounded during an
+  // RPC outage. We catch *all* rejections here and degrade to "unavailable"
+  // rather than letting an attestation-layer failure prevent the card from
+  // rendering the medically decision-relevant data.
+  let attestationStatus: "verified" | "not_verified" | "unavailable" =
+    "not_verified";
   try {
-    const attestation = await Promise.race([
-      getAttestation(recordHash),
-      new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 2000)
-      ),
-    ]);
+    const attestation = await getAttestation(recordHash);
     attestationStatus = attestation !== null ? "verified" : "not_verified";
   } catch (error) {
     console.error("Attestation lookup failed or timed out:", error);

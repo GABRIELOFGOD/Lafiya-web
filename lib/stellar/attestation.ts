@@ -13,6 +13,19 @@ import type { Attestation } from "@/lib/attestation/types";
 /** Fixture hash for local dev/demo only — not a real record's hash. */
 export const DEMO_VERIFIED_RECORD_HASH = "a".repeat(64);
 
+/**
+ * Maximum milliseconds to wait for a Soroban RPC response before treating
+ * the attestation lookup as a failure. This timeout fires *inside*
+ * `getAttestation`, before the result is returned to callers, so that a
+ * hanging RPC endpoint counts toward the circuit-breaker failure threshold
+ * and trips the breaker after `failureThreshold` consecutive slow calls.
+ *
+ * Callers (e.g. the public card page) should treat a rejection from
+ * `getAttestation` as "verification status unavailable" rather than a
+ * hard error — the card must still render the emergency data.
+ */
+export const ATTESTATION_TIMEOUT_MS = 2000;
+
 const MOCK_ATTESTATIONS = new Map<string, Attestation>([
   [
     DEMO_VERIFIED_RECORD_HASH,
@@ -24,6 +37,17 @@ const MOCK_ATTESTATIONS = new Map<string, Attestation>([
   ],
 ]);
 
+/**
+ * A simple circuit breaker that prevents cascading latency when a downstream
+ * dependency (e.g. the Soroban RPC endpoint) is slow or unavailable.
+ *
+ * States:
+ *  - CLOSED  — normal operation; every call goes through.
+ *  - OPEN    — fast-fail; calls are rejected immediately without hitting the
+ *              RPC, so card-page latency stays bounded even during outages.
+ *  - HALF-OPEN — one probe call is allowed after `cooldownPeriod` ms; a
+ *               success closes the breaker, a failure reopens it.
+ */
 export class CircuitBreaker {
   private state: "CLOSED" | "OPEN" | "HALF-OPEN" = "CLOSED";
   private consecutiveFailures = 0;
@@ -73,10 +97,39 @@ export class CircuitBreaker {
 
 export const attestationBreaker = new CircuitBreaker();
 
+/**
+ * Look up a Soroban attestation for the given record hash.
+ *
+ * Resilience contract:
+ *  - The call is wrapped in a circuit breaker (see `CircuitBreaker` above).
+ *    After `failureThreshold` consecutive failures or timeouts the breaker
+ *    opens and subsequent calls fast-fail immediately, keeping card-page
+ *    latency below `ATTESTATION_TIMEOUT_MS` even during an RPC outage.
+ *  - A per-call `ATTESTATION_TIMEOUT_MS` deadline is enforced *inside* this
+ *    function so that a hanging RPC counts as a failure against the breaker.
+ *
+ * Callers MUST catch rejections from this function and degrade gracefully
+ * (render a "verification status unavailable" badge) rather than letting
+ * an attestation-layer outage prevent the card from rendering emergency data.
+ */
 export async function getAttestation(
   recordHash: string,
 ): Promise<Attestation | null> {
   return attestationBreaker.execute(async () => {
-    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+    const rpcCall = Promise.resolve(
+      MOCK_ATTESTATIONS.get(recordHash) ?? null,
+      // NOTE: replace the line above with the real Soroban RPC call when
+      // `lafiya-contracts` ships, e.g.:
+      //   sorobanServer.getAttestation(recordHash)
+    );
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("Attestation RPC timeout")),
+        ATTESTATION_TIMEOUT_MS,
+      ),
+    );
+
+    return Promise.race([rpcCall, timeout]);
   });
 }
