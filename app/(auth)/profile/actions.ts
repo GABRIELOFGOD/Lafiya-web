@@ -47,6 +47,35 @@ function getEmergencyContacts(formData: FormData): unknown[] {
   }
 }
 
+export async function regenerateCardId(
+  _prevState: { error?: string } | undefined,
+  formData: FormData,
+): Promise<{ error?: string }> {
+  void formData;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "You must be signed in." };
+  }
+
+  const newId = crypto.randomUUID();
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ card_public_id: newId })
+    .eq("user_id", user.id);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/profile");
+  return {};
+}
+
 /**
  * Fills in defaults for fields the UI doesn't expose yet (grown field group
  * by field group across several commits) from the existing row, so a save
@@ -85,6 +114,18 @@ export async function upsertProfile(
     .select("*")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  const expectedUpdatedAt = formData.get("expectedUpdatedAt")?.toString();
+  if (typeof expectedUpdatedAt !== "string" || expectedUpdatedAt.length === 0) {
+    return { error: "Missing concurrency token. Please reload the page." };
+  }
+
+  if (existing?.updated_at && existing.updated_at !== expectedUpdatedAt) {
+    return {
+      error:
+        "This profile was updated elsewhere since you loaded this page. Reload and reapply your changes before saving.",
+    };
+  }
 
   const defaults = toFormDefaults(existing);
 
