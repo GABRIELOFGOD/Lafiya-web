@@ -82,7 +82,6 @@ export function PhotoUploadField({
             alt=""
             width={64}
             height={64}
-            unoptimized
             className="h-16 w-16 rounded-full object-cover"
           />
         ) : (
