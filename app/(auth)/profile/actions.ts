@@ -165,6 +165,15 @@ export async function upsertProfile(
     return { error: error.message };
   }
 
+  const { data: updatedProfile } = await supabase
+    .from("profiles")
+    .select("card_public_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   revalidatePath("/profile");
+  if (updatedProfile?.card_public_id) {
+    revalidatePath(`/card/${updatedProfile.card_public_id}`);
+  }
   return { success: true };
 }
