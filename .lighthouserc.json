@@ -1,0 +1,41 @@
+{
+  "ci": {
+    "collect": {
+      "url": [
+        "http://localhost:3000/card/11111111-1111-1111-1111-111111111111"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "onlyCategories": ["performance", "accessibility"],
+        "formFactor": "mobile",
+        "screenEmulation": {
+          "mobile": true,
+          "width": 375,
+          "height": 667,
+          "deviceScaleFactor": 2,
+          "disabled": false
+        },
+        "throttling": {
+          "rttMs": 150,
+          "throughputKbps": 1638.4,
+          "cpuSlowdownMultiplier": 4,
+          "requestLatencyMs": 562.5,
+          "downloadThroughputKbps": 1379.6,
+          "uploadThroughputKbps": 675.7
+        }
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.85 }],
+        "categories:accessibility": ["error", { "minScore": 0.9 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
+        "total-blocking-time": ["error", { "maxNumericValue": 200 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+        "resource-summary:script:size": ["error", { "maxNumericValue": 200000 }],
+        "resource-summary:document:size": ["error", { "maxNumericValue": 50000 }],
+        "resource-summary:total:size": ["error", { "maxNumericValue": 300000 }]
+      }
+    }
+  }
+}
