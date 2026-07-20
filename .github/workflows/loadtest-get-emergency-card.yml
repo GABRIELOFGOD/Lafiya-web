@@ -1,0 +1,30 @@
+name: Load Test get_emergency_card
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Staging base URL'
+        required: true
+        default: 'https://staging.example.com'
+      concurrency:
+        description: 'Number of virtual users'
+        required: true
+        default: '200'
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install k6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y k6
+      - name: Run load test
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          CONCURRENCY: ${{ github.event.inputs.concurrency }}
+        run: |
+          k6 run loadtest/k6_get_emergency_card_test.js
