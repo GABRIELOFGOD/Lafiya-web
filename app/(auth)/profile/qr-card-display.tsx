@@ -3,6 +3,7 @@ import Image from "next/image";
 import { generateQrDataUrl } from "@/lib/qr/generateQrDataUrl";
 
 import { CopyLinkButton } from "./copy-link-button";
+import { RegenerateCardButton } from "./regenerate-card-button";
 
 export async function QrCardDisplay({ cardUrl }: { cardUrl: string }) {
   const qrDataUrl = await generateQrDataUrl(cardUrl);
@@ -23,7 +24,10 @@ export async function QrCardDisplay({ cardUrl }: { cardUrl: string }) {
       <p className="max-w-xs text-xs break-all text-zinc-500 dark:text-zinc-500">
         {cardUrl}
       </p>
-      <CopyLinkButton text={cardUrl} />
+      <div className="flex gap-3">
+        <CopyLinkButton text={cardUrl} />
+        <RegenerateCardButton />
+      </div>
     </div>
   );
 }
