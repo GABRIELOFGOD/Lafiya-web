@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { axe } from "vitest-axe";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
@@ -65,6 +66,20 @@ describe("PublicCardPage", () => {
     // Never leaks internal identifiers, only the emergency subset.
     expect(screen.queryByText(/user_id/i)).not.toBeInTheDocument();
     expect(screen.queryByText(VALID_ID)).not.toBeInTheDocument();
+  });
+
+  it("passes axe-core accessibility audit", async () => {
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getAttestation).mockResolvedValue(null);
+
+    const jsx = await PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    const { container } = render(jsx);
+
+    // Run axe against the document body to catch landmark violations
+    const results = await axe(document.body);
+    expect(results).toHaveNoViolations();
   });
 
   it("calls notFound for a malformed id without querying the database", async () => {
