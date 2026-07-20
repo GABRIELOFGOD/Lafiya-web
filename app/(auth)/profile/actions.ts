@@ -115,6 +115,18 @@ export async function upsertProfile(
     .eq("user_id", user.id)
     .maybeSingle();
 
+  const expectedUpdatedAt = formData.get("expectedUpdatedAt")?.toString();
+  if (typeof expectedUpdatedAt !== "string" || expectedUpdatedAt.length === 0) {
+    return { error: "Missing concurrency token. Please reload the page." };
+  }
+
+  if (existing?.updated_at && existing.updated_at !== expectedUpdatedAt) {
+    return {
+      error:
+        "This profile was updated elsewhere since you loaded this page. Reload and reapply your changes before saving.",
+    };
+  }
+
   const defaults = toFormDefaults(existing);
 
   const parsed = profileFormSchema.safeParse({
