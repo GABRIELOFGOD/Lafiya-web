@@ -35,6 +35,19 @@ import { serverEnv } from "@/lib/env";
 /** Fixture hash for local dev/demo only — not a real record's hash. */
 export const DEMO_VERIFIED_RECORD_HASH = "a".repeat(64);
 
+/**
+ * Maximum milliseconds to wait for a Soroban RPC response before treating
+ * the attestation lookup as a failure. This timeout fires *inside*
+ * `getAttestation`, before the result is returned to callers, so that a
+ * hanging RPC endpoint counts toward the circuit-breaker failure threshold
+ * and trips the breaker after `failureThreshold` consecutive slow calls.
+ *
+ * Callers (e.g. the public card page) should treat a rejection from
+ * `getAttestation` as "verification status unavailable" rather than a
+ * hard error — the card must still render the emergency data.
+ */
+export const ATTESTATION_TIMEOUT_MS = 2000;
+
 const MOCK_ATTESTATIONS = new Map<string, Attestation>([
   [
     DEMO_VERIFIED_RECORD_HASH,

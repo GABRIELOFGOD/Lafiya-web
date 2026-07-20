@@ -9,7 +9,7 @@ A patient-owned emergency health card on Stellar — the vitals that decide emer
 
 _Lafiya_ is Hausa for health, safety, and wellbeing.
 
-> **Status:** Pre-alpha · Stellar **testnet** · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
+> **Status:** Pre-alpha · Stellar **testnet** · Live: [lafiya-web.vercel.app](https://lafiya-web.vercel.app) · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
 
 ## Overview
 
