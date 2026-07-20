@@ -49,6 +49,7 @@ export function ProfileForm({
       <PhotoUploadField
         userId={userId}
         initialUrl={profile?.photo_url ?? null}
+        error={state?.errors?.photoUrl}
       />
 
       <div>
@@ -64,8 +65,15 @@ export function ProfileForm({
           type="text"
           required
           defaultValue={profile?.name ?? ""}
+          aria-invalid={state?.errors?.name ? "true" : undefined}
+          aria-describedby={state?.errors?.name ? "name-error" : undefined}
           className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         />
+        {state?.errors?.name ? (
+          <p id="name-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+            {state.errors.name}
+          </p>
+        ) : null}
       </div>
 
       <div>
@@ -80,8 +88,15 @@ export function ProfileForm({
           name="dateOfBirth"
           type="date"
           defaultValue={profile?.date_of_birth ?? ""}
+          aria-invalid={state?.errors?.dateOfBirth ? "true" : undefined}
+          aria-describedby={state?.errors?.dateOfBirth ? "dateOfBirth-error" : undefined}
           className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         />
+        {state?.errors?.dateOfBirth ? (
+          <p id="dateOfBirth-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+            {state.errors.dateOfBirth}
+          </p>
+        ) : null}
       </div>
 
       <div>
@@ -97,8 +112,15 @@ export function ProfileForm({
           type="text"
           placeholder="e.g. Hausa"
           defaultValue={profile?.language ?? ""}
+          aria-invalid={state?.errors?.language ? "true" : undefined}
+          aria-describedby={state?.errors?.language ? "language-error" : undefined}
           className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         />
+        {state?.errors?.language ? (
+          <p id="language-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+            {state.errors.language}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -113,6 +135,8 @@ export function ProfileForm({
             id="bloodGroup"
             name="bloodGroup"
             defaultValue={profile?.blood_group ?? "unknown"}
+            aria-invalid={state?.errors?.bloodGroup ? "true" : undefined}
+            aria-describedby={state?.errors?.bloodGroup ? "bloodGroup-error" : undefined}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           >
             {BLOOD_GROUPS.map((value) => (
@@ -121,6 +145,11 @@ export function ProfileForm({
               </option>
             ))}
           </select>
+          {state?.errors?.bloodGroup ? (
+            <p id="bloodGroup-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {state.errors.bloodGroup}
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -134,6 +163,8 @@ export function ProfileForm({
             id="genotype"
             name="genotype"
             defaultValue={profile?.genotype ?? "unknown"}
+            aria-invalid={state?.errors?.genotype ? "true" : undefined}
+            aria-describedby={state?.errors?.genotype ? "genotype-error" : undefined}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           >
             {GENOTYPES.map((value) => (
@@ -142,6 +173,11 @@ export function ProfileForm({
               </option>
             ))}
           </select>
+          {state?.errors?.genotype ? (
+            <p id="genotype-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {state.errors.genotype}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -150,6 +186,7 @@ export function ProfileForm({
         label="Allergies"
         placeholder="e.g. Penicillin"
         initialValues={profile?.allergies ?? []}
+        error={state?.errors?.allergies}
       />
 
       <TagListField
@@ -157,6 +194,7 @@ export function ProfileForm({
         label="Current medications"
         placeholder="e.g. Insulin"
         initialValues={profile?.medications ?? []}
+        error={state?.errors?.medications}
       />
 
       <TagListField
@@ -164,10 +202,12 @@ export function ProfileForm({
         label="Chronic conditions / implants"
         placeholder="e.g. Asthma"
         initialValues={profile?.chronic_conditions ?? []}
+        error={state?.errors?.chronicConditions}
       />
 
       <EmergencyContactsField
         initialValues={profile?.emergency_contacts ?? []}
+        error={state?.errors?.emergencyContacts}
       />
 
       <button
