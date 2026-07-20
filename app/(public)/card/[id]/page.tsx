@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
 import { computeRecordHash } from "@/lib/attestation/recordHash";
 import { createClient } from "@/lib/supabase/server";
@@ -7,7 +9,12 @@ import { getAttestation } from "@/lib/stellar/attestation";
 
 import { VerifiedBadge } from "./verified-badge";
 
-export const dynamic = "force-dynamic";
+// Caching strategy: this page is ISR with a short TTL rather than
+// force-dynamic. Card data changes rarely (only when a patient edits their
+// profile). Between edits, a 60s stale window is acceptable for emergency
+// info. On profile save, upsertProfile explicitly revalidates this path so
+// edits appear immediately to the next scan.
+export const revalidate = 60;
 
 // This page is unauthenticated and reachable by anyone with the link (that's
 // the point — a responder scanning a QR shouldn't need to log in), but it
@@ -39,27 +46,30 @@ export default async function PublicCardPage({
     p_card_id: id,
   });
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    console.error("[PublicCardPage] failed to load emergency card", {
+      cardPublicId: id,
+      error,
+    });
+    throw new Error("UNAVAILABLE");
+  }
+
+  if (!data || data.length === 0) {
     notFound();
   }
 
   const card = data[0];
   const recordHash = computeRecordHash(card);
 
-  // getAttestation enforces its own ATTESTATION_TIMEOUT_MS deadline and is
-  // wrapped in a circuit breaker — repeated failures or timeouts will cause
-  // it to fast-fail immediately so card-page latency stays bounded during an
-  // RPC outage. We catch *all* rejections here and degrade to "unavailable"
-  // rather than letting an attestation-layer failure prevent the card from
-  // rendering the medically decision-relevant data.
-  let attestationStatus: "verified" | "not_verified" | "unavailable" =
-    "not_verified";
+  let attestation = null;
   try {
-    const attestation = await getAttestation(recordHash);
-    attestationStatus = attestation !== null ? "verified" : "not_verified";
-  } catch (error) {
-    console.error("Attestation lookup failed or timed out:", error);
-    attestationStatus = "unavailable";
+    attestation = await getAttestation(recordHash);
+  } catch (err) {
+    logError("Failed to retrieve attestation from Stellar", err, {
+      route: "/card/[id]",
+      recordHash,
+    });
+    throw err;
   }
 
   return (

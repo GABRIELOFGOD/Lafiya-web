@@ -1,13 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ProfileRow } from "@/lib/supabase/types";
 import { profileFormSchema } from "@/lib/validation/profile";
 
+import { logError } from "@/lib/logging/logger";
+
 export interface ProfileFormState {
   error?: string;
+  errors?: Record<string, string>;
   success?: boolean;
 }
 
@@ -109,7 +114,7 @@ export async function upsertProfile(
     return { error: "You must be signed in." };
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: selectError } = await supabase
     .from("profiles")
     .select("*")
     .eq("user_id", user.id)
@@ -144,7 +149,17 @@ export async function upsertProfile(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    const fieldErrors: Record<string, string> = {};
+    parsed.error.issues.forEach((issue) => {
+      const field = issue.path[0];
+      if (typeof field === "string" && !fieldErrors[field]) {
+        fieldErrors[field] = issue.message;
+      }
+    });
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+      errors: fieldErrors,
+    };
   }
 
   const { error } = await supabase.from("profiles").upsert({
@@ -162,9 +177,68 @@ export async function upsertProfile(
   });
 
   if (error) {
+    logError("Failed to upsert profile in database", error, {
+      route: "/profile (action: upsertProfile)",
+      userId: user.id,
+    });
     return { error: error.message };
   }
 
+  const { data: updatedProfile } = await supabase
+    .from("profiles")
+    .select("card_public_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   revalidatePath("/profile");
+  if (updatedProfile?.card_public_id) {
+    revalidatePath(`/card/${updatedProfile.card_public_id}`);
+  }
   return { success: true };
+}
+
+export async function deleteAccount(
+  _prevState: ProfileFormState | undefined,
+  formData: FormData,
+): Promise<ProfileFormState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "You must be signed in." };
+  }
+
+  const confirm = formData.get("confirm")?.toString().trim();
+  if (confirm !== "DELETE") {
+    return { error: "Type DELETE to confirm." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: objects } = await admin.storage
+    .from("avatars")
+    .list(user.id, { limit: 100 });
+
+  if (objects && objects.length > 0) {
+    const paths = objects.map((o) => `${user.id}/${o.name}`);
+    const { error: storageError } = await admin.storage
+      .from("avatars")
+      .remove(paths);
+
+    if (storageError) {
+      return { error: storageError.message };
+    }
+  }
+
+  const { error: deleteError } =
+    await admin.auth.admin.deleteUser(user.id);
+
+  if (deleteError) {
+    return { error: deleteError.message };
+  }
+
+  await supabase.auth.signOut();
+  redirect("/");
 }

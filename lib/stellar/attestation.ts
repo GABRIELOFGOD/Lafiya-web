@@ -1,13 +1,35 @@
+import {
+  Account,
+  BASE_FEE,
+  Contract,
+  Keypair,
+  TransactionBuilder,
+  nativeToScVal,
+  rpc,
+  scValToNative,
+} from "@stellar/stellar-sdk";
+
 import type { Attestation } from "@/lib/attestation/types";
+import { serverEnv } from "@/lib/env";
 
 /**
- * Pre-M1 stub. `lafiya-contracts` (the Soroban attestation registry) hasn't
- * been built or deployed yet, so this is an in-memory mock rather than a
- * real RPC call — see README.md > Soroban Smart Contract Layer. Swap the
- * body for a real `get_attestation` Soroban contract call once that repo
- * ships; the function signature is designed to stay the same so callers
- * (the public card page, the attestation Route Handler) don't need to
- * change.
+ * Live M1 attestation lookup.
+ *
+ * When `ATTESTATION_CONTRACT_ID` is configured, `getAttestation` calls the
+ * real `get_attestation` Soroban function on the deployed `lafiya-contracts`
+ * registry over JSON-RPC (see README.md > M1 — Attestation). The call is
+ * read-only: we `simulateTransaction` it, which costs nothing and needs no
+ * signing, but still executes the contract and returns the on-chain
+ * `Attestation` for the given record hash.
+ *
+ * When `ATTESTATION_CONTRACT_ID` is unset (local dev, CI, or pre-deploy), the
+ * function falls back to the in-memory mock below so the verified indicator,
+ * the public card page, and the attestation Route Handler all keep working
+ * without a contract. This fallback is intentional and documented; flip it off
+ * by setting `ATTESTATION_CONTRACT_ID` in the environment.
+ *
+ * The function signature is unchanged from the pre-M1 stub, so neither caller
+ * (the public card page nor the attestation Route Handler) needs to change.
  */
 
 /** Fixture hash for local dev/demo only — not a real record's hash. */
@@ -37,111 +59,104 @@ const MOCK_ATTESTATIONS = new Map<string, Attestation>([
   ],
 ]);
 
-/**
- * A simple circuit breaker that prevents cascading latency when a downstream
- * dependency (e.g. the Soroban RPC endpoint) is slow or unavailable.
- *
- * States:
- *  - CLOSED  — normal operation; every call goes through.
- *  - OPEN    — fast-fail; calls are rejected immediately without hitting the
- *              RPC, so card-page latency stays bounded even during outages.
- *  - HALF-OPEN — one probe call is allowed after `cooldownPeriod` ms; a
- *               success closes the breaker, a failure reopens it.
- */
-export class CircuitBreaker {
-  private state: "CLOSED" | "OPEN" | "HALF-OPEN" = "CLOSED";
-  private consecutiveFailures = 0;
-  private lastFailureTime = 0;
-  private failureThreshold = 3;
-  private cooldownPeriod = 30000; // 30 seconds
-
-  async execute<T>(fn: () => Promise<T>): Promise<T> {
-    const now = Date.now();
-    if (this.state === "OPEN") {
-      if (now - this.lastFailureTime >= this.cooldownPeriod) {
-        this.state = "HALF-OPEN";
-      } else {
-        throw new Error("Circuit breaker is OPEN");
-      }
-    }
-
-    try {
-      const result = await fn();
-      this.success();
-      return result;
-    } catch (error) {
-      this.failure();
-      throw error;
-    }
-  }
-
-  private success() {
-    this.consecutiveFailures = 0;
-    this.state = "CLOSED";
-  }
-
-  private failure() {
-    this.consecutiveFailures++;
-    this.lastFailureTime = Date.now();
-    if (this.consecutiveFailures >= this.failureThreshold) {
-      this.state = "OPEN";
-    }
-  }
-
-  reset() {
-    this.state = "CLOSED";
-    this.consecutiveFailures = 0;
-    this.lastFailureTime = 0;
-  }
+// simulateTransaction needs a source account, but since we never submit the
+// transaction it's just a placeholder — any well-formed account works. Built
+// lazily (only on the real-RPC path) so importing this module doesn't require
+// a valid account and the local-dev mock fallback stays side-effect free.
+function simulationSource() {
+  return new Account(Keypair.random().publicKey(), "0");
 }
 
-export const attestationBreaker = new CircuitBreaker();
-
-export const sorobanClient = {
-  getAttestation: async (recordHash: string): Promise<Attestation | null> => {
-    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
-    // NOTE: replace the body above with the real Soroban RPC call when
-    // `lafiya-contracts` ships, e.g.:
-    //   return sorobanServer.getAttestation(recordHash);
-  },
-};
-
-/**
- * Look up a Soroban attestation for the given record hash.
- *
- * Resilience contract:
- *  - The call is wrapped in a circuit breaker (see `CircuitBreaker` above).
- *    After `failureThreshold` consecutive failures or timeouts the breaker
- *    opens and subsequent calls fast-fail immediately, keeping card-page
- *    latency below `ATTESTATION_TIMEOUT_MS` even during an RPC outage.
- *  - A per-call `ATTESTATION_TIMEOUT_MS` deadline is enforced *inside* this
- *    function so that a hanging RPC counts as a failure against the breaker.
- *
- * Callers MUST catch rejections from this function and degrade gracefully
- * (render a "verification status unavailable" badge) rather than letting
- * an attestation-layer outage prevent the card from rendering emergency data.
- */
 export async function getAttestation(
   recordHash: string,
 ): Promise<Attestation | null> {
-  return attestationBreaker.execute(async () => {
-    let timeoutId: NodeJS.Timeout | undefined;
+  // Local-dev / pre-deploy fallback: no contract configured yet.
+  if (!serverEnv.ATTESTATION_CONTRACT_ID) {
+    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+  }
 
-    const rpcCall = sorobanClient.getAttestation(recordHash);
+  const server = new rpc.Server(serverEnv.SOROBAN_RPC_URL);
+  const contract = new Contract(serverEnv.ATTESTATION_CONTRACT_ID);
 
-    const timeout = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () => reject(new Error("Attestation RPC timeout")),
-        ATTESTATION_TIMEOUT_MS,
-      );
-    });
+  const recordHashBytes = Buffer.from(recordHash, "hex");
+  const invocation = contract.call(
+    "get_attestation",
+    nativeToScVal(recordHashBytes, { type: "bytes" }),
+  );
 
-    try {
-      return await Promise.race([rpcCall, timeout]);
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+  const tx = new TransactionBuilder(simulationSource(), {
+    fee: BASE_FEE,
+    networkPassphrase: serverEnv.STELLAR_NETWORK_PASSPHRASE,
+  })
+    .addOperation(invocation)
+    .setTimeout(30)
+    .build();
+
+  const simulation = await server.simulateTransaction(tx);
+
+  // A record hash with no attestation reverts in-contract; the simulation
+  // reports an error rather than a value. Treat that as "not verified".
+  if (!rpc.Api.isSimulationSuccess(simulation)) {
+    return null;
+  }
+
+  const retval = simulation.result?.retval;
+  if (!retval) {
+    return null;
+  }
+
+  return decodeAttestation(scValToNative(retval), recordHash);
+}
+
+/**
+ * The contract returns the `Attestation` struct
+ * ({ record_hash, attester, timestamp }). Decoding is defensive: we don't
+ * assume the exact SCVal key casing (Rust struct field names may surface as
+ * snake_case or camelCase depending on the spec), and we validate types so a
+ * malformed on-chain value can't quietly poison the verified indicator.
+ */
+function decodeAttestation(value: unknown, recordHash: string): Attestation | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+
+  const attester = extractAddress(raw.attester);
+  const timestamp = extractTimestamp(raw.timestamp);
+
+  if (typeof attester !== "string" || typeof timestamp !== "number") {
+    return null;
+  }
+
+  return {
+    recordHash,
+    attester,
+    timestamp,
+  };
+}
+
+function extractAddress(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+  // An Address SCVal decodes to a string via its toString(); guard anyway.
+  if (value && typeof (value as { toString?: () => string }).toString === "function") {
+    const str = String(value);
+    if (str.startsWith("G") || str.startsWith("C")) {
+      return str;
     }
-  });
+  }
+  return null;
+}
+
+function extractTimestamp(value: unknown): number | null {
+  if (typeof value === "number") {
+    return value;
+  }
+  // u64/i64 SCVal decode to bigint; convert losslessly within JS safe range.
+  if (typeof value === "bigint") {
+    const num = Number(value);
+    return Number.isSafeInteger(num) ? num : null;
+  }
+  return null;
 }

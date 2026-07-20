@@ -99,12 +99,12 @@ describe("PublicCardPage", () => {
     ).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
-  it("calls notFound when the RPC errors", async () => {
+  it("throws an unavailable error when the RPC errors, instead of notFound", async () => {
     mockRpc({ data: null, error: new Error("boom") });
 
     await expect(
       PublicCardPage({ params: Promise.resolve({ id: VALID_ID }) }),
-    ).rejects.toThrow("NEXT_NOT_FOUND");
+    ).rejects.toThrow("UNAVAILABLE");
   });
 
   it("renders with unavailable status when attestation lookup fails", async () => {
