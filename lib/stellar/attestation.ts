@@ -97,6 +97,15 @@ export class CircuitBreaker {
 
 export const attestationBreaker = new CircuitBreaker();
 
+export const sorobanClient = {
+  getAttestation: async (recordHash: string): Promise<Attestation | null> => {
+    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+    // NOTE: replace the body above with the real Soroban RPC call when
+    // `lafiya-contracts` ships, e.g.:
+    //   return sorobanServer.getAttestation(recordHash);
+  },
+};
+
 /**
  * Look up a Soroban attestation for the given record hash.
  *
@@ -116,20 +125,23 @@ export async function getAttestation(
   recordHash: string,
 ): Promise<Attestation | null> {
   return attestationBreaker.execute(async () => {
-    const rpcCall = Promise.resolve(
-      MOCK_ATTESTATIONS.get(recordHash) ?? null,
-      // NOTE: replace the line above with the real Soroban RPC call when
-      // `lafiya-contracts` ships, e.g.:
-      //   sorobanServer.getAttestation(recordHash)
-    );
+    let timeoutId: NodeJS.Timeout | undefined;
 
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(
+    const rpcCall = sorobanClient.getAttestation(recordHash);
+
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
         () => reject(new Error("Attestation RPC timeout")),
         ATTESTATION_TIMEOUT_MS,
-      ),
-    );
+      );
+    });
 
-    return Promise.race([rpcCall, timeout]);
+    try {
+      return await Promise.race([rpcCall, timeout]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
   });
 }
