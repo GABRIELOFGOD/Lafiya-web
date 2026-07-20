@@ -58,6 +58,14 @@ export type EmergencyCardRow = {
   language: string | null;
 };
 
+/** Row shape of public.consent_logs. */
+export type ConsentLogRow = {
+  id: string;
+  user_id: string;
+  policy_version: string;
+  accepted_at: string;
+};
+
 /**
  * Matches the shape @supabase/supabase-js's `createClient<Database>()`
  * generic expects, so `.from("profiles")` and `.rpc("get_emergency_card")`
@@ -82,6 +90,15 @@ export type Database = {
         Update: Partial<Omit<ProfileRow, "user_id">>;
         Relationships: [];
       };
+      consent_logs: {
+        Row: ConsentLogRow;
+        Insert: Omit<ConsentLogRow, "id" | "accepted_at"> & {
+          id?: string;
+          accepted_at?: string;
+        };
+        Update: Partial<ConsentLogRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -96,3 +113,4 @@ export type Database = {
     };
   };
 };
+

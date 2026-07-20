@@ -60,7 +60,17 @@ export default async function PublicCardPage({
 
   const card = data[0];
   const recordHash = computeRecordHash(card);
-  const attestation = await getAttestation(recordHash);
+
+  let attestation = null;
+  try {
+    attestation = await getAttestation(recordHash);
+  } catch (err) {
+    logError("Failed to retrieve attestation from Stellar", err, {
+      route: "/card/[id]",
+      recordHash,
+    });
+    throw err;
+  }
 
   return (
     <>

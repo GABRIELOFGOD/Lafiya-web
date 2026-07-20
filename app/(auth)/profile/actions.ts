@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import type { ProfileRow } from "@/lib/supabase/types";
 import { profileFormSchema } from "@/lib/validation/profile";
 
+import { logError } from "@/lib/logging/logger";
+
 export interface ProfileFormState {
   error?: string;
   errors?: Record<string, string>;
@@ -112,7 +114,7 @@ export async function upsertProfile(
     return { error: "You must be signed in." };
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: selectError } = await supabase
     .from("profiles")
     .select("*")
     .eq("user_id", user.id)
@@ -175,6 +177,10 @@ export async function upsertProfile(
   });
 
   if (error) {
+    logError("Failed to upsert profile in database", error, {
+      route: "/profile (action: upsertProfile)",
+      userId: user.id,
+    });
     return { error: error.message };
   }
 

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 /**
  * Supabase Storage is served from the same configured origin as the Supabase
@@ -41,4 +42,13 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const sentryWebpackPluginOptions = {
+  silent: true,
+  org: "lafiya",
+  project: "lafiya-web",
+  // Disable source map upload if we don't have the auth token to avoid build failures
+  disableServerWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
+  disableClientWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
+};
+
+export default withSentryConfig(nextConfig, sentryWebpackPluginOptions);

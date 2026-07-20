@@ -4,6 +4,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+import { logError } from "@/lib/logging/logger";
+
+const CURRENT_POLICY_VERSION = "ndpa-2023-v1";
 
 const signUpSchema = z.object({
   email: z.email("Enter a valid email address"),
@@ -40,7 +45,31 @@ export async function signUp(
   });
 
   if (error) {
+    logError("Sign up failed", error, {
+      route: "/signup (action: signUp)",
+      email: parsed.data.email,
+    });
     return { error: error.message };
+  }
+
+  if (data.user) {
+    const adminClient = createAdminClient();
+    const { error: consentError } = await adminClient
+      .from("consent_logs")
+      .insert({
+        user_id: data.user.id,
+        policy_version: CURRENT_POLICY_VERSION,
+      });
+
+    if (consentError) {
+      logError("Failed to record user consent", consentError, {
+        route: "/signup (action: signUp)",
+        userId: data.user.id,
+      });
+      // Rollback auth user creation if consent recording fails
+      await adminClient.auth.admin.deleteUser(data.user.id);
+      return { error: "Failed to record consent. Please try again." };
+    }
   }
 
   // If email confirmations are enabled (the default for hosted projects),
@@ -53,3 +82,4 @@ export async function signUp(
 
   redirect("/profile");
 }
+
