@@ -8,6 +8,10 @@ import { createClient } from "@/lib/supabase/server";
 const signUpSchema = z.object({
   email: z.email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  consent: z
+    .string()
+    .transform((val) => val === "on")
+    .refine((val) => val, "You must accept the privacy policy to continue"),
 });
 
 export interface SignUpState {
@@ -22,6 +26,7 @@ export async function signUp(
   const parsed = signUpSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
+    consent: formData.get("consent"),
   });
 
   if (!parsed.success) {

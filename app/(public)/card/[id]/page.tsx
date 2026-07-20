@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
 import { computeRecordHash } from "@/lib/attestation/recordHash";
 import { createClient } from "@/lib/supabase/server";
