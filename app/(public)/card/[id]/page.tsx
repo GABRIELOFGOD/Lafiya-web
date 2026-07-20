@@ -46,7 +46,15 @@ export default async function PublicCardPage({
     p_card_id: id,
   });
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    console.error("[PublicCardPage] failed to load emergency card", {
+      cardPublicId: id,
+      error,
+    });
+    throw new Error("UNAVAILABLE");
+  }
+
+  if (!data || data.length === 0) {
     notFound();
   }
 
