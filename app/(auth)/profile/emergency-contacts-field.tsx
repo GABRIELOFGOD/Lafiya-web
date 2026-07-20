@@ -18,10 +18,10 @@ const EMPTY_CONTACT: EmergencyContact = {
  */
 export function EmergencyContactsField({
   initialValues,
-  fieldErrors,
+  error,
 }: {
   initialValues: EmergencyContact[];
-  fieldErrors?: Record<string, string>;
+  error?: string;
 }) {
   const [contacts, setContacts] = useState(
     initialValues.length > 0 ? initialValues : [EMPTY_CONTACT],
@@ -55,49 +55,39 @@ export function EmergencyContactsField({
             key={index}
             className="flex flex-col gap-2 rounded-md border border-zinc-300 p-3 sm:flex-row dark:border-zinc-700"
           >
-          <input
-            type="text"
-            placeholder="Name"
-            value={contact.name}
-            onChange={(event) =>
-              updateContact(index, "name", event.target.value)
-            }
-            aria-invalid={!!fieldErrors?.[`emergencyContacts.${index}.name`]}
-            aria-describedby={fieldErrors?.[`emergencyContacts.${index}.name`] ? `emergencyContacts-${index}-name-error` : undefined}
-            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          />
-          {fieldErrors?.[`emergencyContacts.${index}.name`] && (
-            <p id={`emergencyContacts-${index}-name-error`} className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors[`emergencyContacts.${index}.name`]}</p>
-          )}
-          <input
-            type="tel"
-            placeholder="Phone"
-            value={contact.phone}
-            onChange={(event) =>
-              updateContact(index, "phone", event.target.value)
-            }
-            aria-invalid={!!fieldErrors?.[`emergencyContacts.${index}.phone`]}
-            aria-describedby={fieldErrors?.[`emergencyContacts.${index}.phone`] ? `emergencyContacts-${index}-phone-error` : undefined}
-            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          />
-          {fieldErrors?.[`emergencyContacts.${index}.phone`] && (
-            <p id={`emergencyContacts-${index}-phone-error`} className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors[`emergencyContacts.${index}.phone`]}</p>
-          )}
-          <input
-            type="text"
-            placeholder="Relationship"
-            value={contact.relationship}
-            onChange={(event) =>
-              updateContact(index, "relationship", event.target.value)
-            }
-            aria-invalid={!!fieldErrors?.[`emergencyContacts.${index}.relationship`]
-            }
-            aria-describedby={fieldErrors?.[`emergencyContacts.${index}.relationship`] ? `emergencyContacts-${index}-relationship-error` : undefined}
-            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          />
-          {fieldErrors?.[`emergencyContacts.${index}.relationship`] && (
-            <p id={`emergencyContacts-${index}-relationship-error`} className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors[`emergencyContacts.${index}.relationship`]}</p>
-          )}
+            <input
+              type="text"
+              placeholder="Name"
+              value={contact.name}
+              onChange={(event) =>
+                updateContact(index, "name", event.target.value)
+              }
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "emergencyContacts-error" : undefined}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            />
+            <input
+              type="tel"
+              placeholder="Phone"
+              value={contact.phone}
+              onChange={(event) =>
+                updateContact(index, "phone", event.target.value)
+              }
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "emergencyContacts-error" : undefined}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            />
+            <input
+              type="text"
+              placeholder="Relationship"
+              value={contact.relationship}
+              onChange={(event) =>
+                updateContact(index, "relationship", event.target.value)
+              }
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "emergencyContacts-error" : undefined}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            />
             <button
               type="button"
               onClick={() =>
@@ -120,6 +110,11 @@ export function EmergencyContactsField({
       >
         + Add contact
       </button>
+      {error ? (
+        <p id="emergencyContacts-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -9,4 +9,8 @@ export type Attestation = {
   attester: string;
   /** Unix seconds. */
   timestamp: number;
+  /** Optional expiry timestamp (Unix seconds). */
+  expiry?: number;
+  /** Optional revocation flag. */
+  revoked?: boolean;
 };

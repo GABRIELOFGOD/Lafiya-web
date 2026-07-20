@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getAttestation } from "@/lib/stellar/attestation";
 
+import { logError } from "@/lib/logging/logger";
+
 const RECORD_HASH_PATTERN = /^[0-9a-f]{64}$/i;
 
 /**
@@ -24,10 +26,20 @@ export async function GET(
     );
   }
 
-  const attestation = await getAttestation(recordHash);
-
-  return NextResponse.json({
-    verified: attestation !== null,
-    attestation,
-  });
+  try {
+    const attestation = await getAttestation(recordHash);
+    return NextResponse.json({
+      verified: attestation !== null,
+      attestation,
+    });
+  } catch (error) {
+    logError("Failed to lookup attestation", error, {
+      route: "/api/attestation/[recordHash]",
+      recordHash,
+    });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
+  }
 }

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -17,18 +17,66 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 export function PhotoUploadField({
   userId,
   initialUrl,
-  serverError,
+  error: serverError,
 }: {
   userId: string;
   initialUrl: string | null;
-  serverError?: string;
+  error?: string;
 }) {
+  void userId;
   const [photoUrl, setPhotoUrl] = useState(initialUrl);
   const [localError, setLocalError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const activeError = error || serverError;
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError("Photo must be a PNG, JPEG, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setError("Photo must be under 5 MB.");
+      return;
+    }
+
+    setError(null);
+    setIsUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/profile/photo", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setError(
+          result.error || `Upload failed with status ${response.status}`,
+        );
+        setIsUploading(false);
+        return;
+      }
+
+      const { publicUrl } = await response.json();
+      // Cache-bust so the new photo shows immediately after an overwrite.
+      setPhotoUrl(`${publicUrl}?updated=${Date.now()}`);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg || "An unexpected error occurred.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   return (
     <div>
@@ -43,7 +91,6 @@ export function PhotoUploadField({
             alt=""
             width={64}
             height={64}
-            unoptimized
             className="h-16 w-16 rounded-full object-cover"
           />
         ) : (
@@ -58,12 +105,16 @@ export function PhotoUploadField({
             accept="image/png,image/jpeg,image/webp"
             onChange={handleFileChange}
             disabled={isUploading}
+            aria-invalid={activeError ? "true" : undefined}
+            aria-describedby={activeError ? "photoUrl-error" : undefined}
             className="hidden"
           />
         </label>
       </div>
-      {localError || serverError ? (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{localError ?? serverError}</p>
+      {activeError ? (
+        <p id="photoUrl-error" role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {activeError}
+        </p>
       ) : null}
     </div>
   );
