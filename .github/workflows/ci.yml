@@ -31,8 +31,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Check card-route bundle size against perf budget
-        run: npm run bundle:check
+      - name: Verify no client bundle leaks
+        run: node scripts/check-client-bundles.js
 
   integration:
     name: Integration tests (local Supabase)
