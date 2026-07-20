@@ -9,7 +9,7 @@ A patient-owned emergency health card on Stellar — the vitals that decide emer
 
 _Lafiya_ is Hausa for health, safety, and wellbeing.
 
-> **Status:** Pre-alpha · Stellar **testnet** · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
+> **Status:** Pre-alpha · Stellar **testnet** · Live: [lafiya-web.vercel.app](https://lafiya-web.vercel.app) · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
 
 ## Overview
 
@@ -85,7 +85,7 @@ graph TB
 - **app/(public)/card/[id]**: public, read-only emergency page — the page a QR code points to
 - **app/(auth)/profile**: authenticated profile editor where a patient manages their private record
 - **lib/supabase/**: Supabase client/server helpers and hand-authored types for the off-chain encrypted store
-- **lib/stellar/**: pre-M1 attestation stub, ready to swap for a real Soroban contract call
+- **lib/stellar/**: Soroban attestation lookup — `getAttestation(recordHash)` calls the deployed `lafiya-contracts` registry over RPC when `ATTESTATION_CONTRACT_ID` is set, and falls back to an in-memory mock otherwise
 - **lib/qr/**: QR code generation for the emergency page
 
 ### Offline support
@@ -141,7 +141,7 @@ pub struct Attestation {
 
 This composability lets a responder's scanner, or any other Stellar-aware verifier, confirm a record was attested by a real, allowlisted health worker — without an external oracle and without ever seeing the health data.
 
-**M1 handoff point.** This repo already has the pieces that plug into the contract above: `lib/attestation/recordHash.ts` computes the deterministic hash a `lafiya-contracts` call would use, and `lib/stellar/attestation.ts` exposes a `getAttestation(recordHash)` function with the signature the real Soroban call will have — today it's an in-memory mock (documented in the file itself) since `lafiya-contracts` doesn't exist yet. Swapping the mock body for a real contract call, once that repo ships, shouldn't require touching any caller (the public card page, the attestation Route Handler).
+**M1 handoff point.** This repo already has the pieces that plug into the contract above: `lib/attestation/recordHash.ts` computes the deterministic hash a `lafiya-contracts` call would use, and `lib/stellar/attestation.ts` exposes a `getAttestation(recordHash)` function with the signature the real Soroban call has. The body now performs a read-only `simulateTransaction` against `get_attestation` on the deployed `lafiya-contracts` registry (via the Stellar SDK) whenever `ATTESTATION_CONTRACT_ID` is configured, and falls back to the original in-memory mock when it isn't set — so the public card page and the attestation Route Handler need no changes. A missing/unattested record hash reverts in-contract and is returned as `null` (not verified).
 
 ## Data Model (Emergency Subset)
 
@@ -162,6 +162,8 @@ Everything else (full history, documents, notes) stays private, behind authentic
 - **Nigeria Data Protection Act (2023)** governs all personal data held. Consent, encryption, and minimal disclosure are designed in from day one.
 - Patients opt into exactly what appears on their public page.
 - No health data on-chain; only non-reversible hashes and attestations.
+
+For the current threat model, access paths, and accepted tradeoffs across the public card, attestation lookup, avatars bucket, and authenticated profile editor, see the shared document in the separate docs repo: [lafiya-docs threat model](../lafiya-docs/threat-model.md).
 
 ## Repository Structure
 
@@ -247,6 +249,7 @@ npm run test:integration  # RLS + RPC tests against real local Postgres
 - [x] Row-Level Security policies enforce patient-only read/write access (plus a table-level GRANT, which RLS alone doesn't provide)
 - [x] QR generation produces a valid, input-dependent data URL
 - [x] Verified-indicator rendering for both the verified and not-yet-verified states
+- [x] Attestation lookup Route Handler (`/api/attestation/[recordHash]`): valid/unknown hashes, regex boundary validation, and response shape stability
 - [x] `get_emergency_card` RPC contract: valid id, unknown id, anon-callable, no extra columns leak
 - [x] Service-worker offline helpers: banner injection + timestamp formatting are unit-tested (`tests/unit/offline-cache-helpers.test.ts`); end-to-end offline behaviour is covered by the manual protocol below
 
@@ -277,9 +280,10 @@ Service-worker behaviour can't be exercised under jsdom, so verify it in a real 
 
 ### M1 — Attestation
 
-- [ ] Soroban attestation registry deployed (`lafiya-contracts`)
-- [ ] Allowlisted attester can verify a record
-- [ ] Card displays a verified indicator
+- [ ] Soroban attestation registry deployed (`lafiya-contracts`) — owned by that repo; set `ATTESTATION_CONTRACT_ID` here once shipped
+- [x] `lafiya-web` calls the real `get_attestation` Soroban function over RPC when `ATTESTATION_CONTRACT_ID` is set, falling back to the in-memory mock otherwise (`lib/stellar/attestation.ts`)
+- [ ] Allowlisted attester can verify a record (contract-side; `lafiya-contracts`)
+- [x] Card displays a verified indicator driven by the real attestation lookup (public card page + `/api/attestation/[recordHash]`)
 
 ### M2 — Incentives
 
@@ -317,8 +321,8 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 - Supabase (`@supabase/supabase-js`, `@supabase/ssr`) — Postgres, Auth, Storage, Row-Level Security
 - `zod` — environment and form validation
 - `qrcode` — QR code generation
+- `@stellar/stellar-sdk` — Soroban RPC client used by `lib/stellar/attestation.ts` to read attestations (M1+)
 - Vitest, React Testing Library — unit, component, and integration tests
-- Soroban / Stellar SDK — planned for M1, once `lafiya-contracts` exists; not a dependency of this repo yet
 - W3C Verifiable Credentials data model, HL7 FHIR — standards informing the data model (see [References](#references))
 
 ## License
@@ -406,7 +410,7 @@ If you change a field name, type, or hashing scheme here, update the Rust struct
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only, bypasses RLS; never exposed to the browser
 - `STELLAR_NETWORK_PASSPHRASE` — must match the network the contracts are deployed on
 - `SOROBAN_RPC_URL` — Soroban RPC endpoint (testnet first)
-- `ATTESTATION_CONTRACT_ID` — the deployed `lafiya-contracts` attestation registry contract id
+- `ATTESTATION_CONTRACT_ID` — the deployed `lafiya-contracts` attestation registry contract id. **Optional:** when unset (local dev, CI, pre-deploy), `getAttestation` serves the in-memory mock so the verified indicator still renders
 
 ### Open Integration Points (not yet implemented)
 
@@ -429,6 +433,7 @@ An agent working in only one of the five repos above can't see the others' code,
 For issues and questions:
 
 - GitHub Issues: [Create an issue](https://github.com/lafiya-xyz/lafiya-web/issues)
+- SECURITY policy: [SECURITY.md](SECURITY.md)
 
 ## Disclaimer
 

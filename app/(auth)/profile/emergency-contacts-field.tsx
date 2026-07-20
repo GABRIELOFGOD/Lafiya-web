@@ -18,8 +18,10 @@ const EMPTY_CONTACT: EmergencyContact = {
  */
 export function EmergencyContactsField({
   initialValues,
+  error,
 }: {
   initialValues: EmergencyContact[];
+  error?: string;
 }) {
   const [contacts, setContacts] = useState(
     initialValues.length > 0 ? initialValues : [EMPTY_CONTACT],
@@ -60,6 +62,8 @@ export function EmergencyContactsField({
               onChange={(event) =>
                 updateContact(index, "name", event.target.value)
               }
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "emergencyContacts-error" : undefined}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
             <input
@@ -69,6 +73,8 @@ export function EmergencyContactsField({
               onChange={(event) =>
                 updateContact(index, "phone", event.target.value)
               }
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "emergencyContacts-error" : undefined}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
             <input
@@ -78,6 +84,8 @@ export function EmergencyContactsField({
               onChange={(event) =>
                 updateContact(index, "relationship", event.target.value)
               }
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "emergencyContacts-error" : undefined}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
             <button
@@ -102,6 +110,11 @@ export function EmergencyContactsField({
       >
         + Add contact
       </button>
+      {error ? (
+        <p id="emergencyContacts-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

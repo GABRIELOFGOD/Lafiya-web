@@ -1,0 +1,153 @@
+/*
+ * Print stylesheet — app/(public)/card/[id]
+ *
+ * Goal: produce a clean, high-contrast, single-page printout of the emergency
+ * card with no dark backgrounds, no unnecessary chrome, and legible QR / badge.
+ *
+ * Imported in layout.tsx (scoped to the public card route group only, so it
+ * doesn't add any payload to the rest of the app).
+ */
+
+@media print {
+  /* ─── Reset browser print margins, ensure white page ──────────────────── */
+  @page {
+    margin: 16mm 14mm;
+    size: A4 portrait;
+  }
+
+  /* ─── Force white background / black text throughout ──────────────────── */
+  *,
+  *::before,
+  *::after {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ─── Body / root layout ───────────────────────────────────────────────── */
+  html,
+  body {
+    width: 100%;
+    font-family:
+      Georgia,
+      "Times New Roman",
+      serif; /* high-legibility serif for print */
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+
+  /* The page wrapper uses Tailwind utility classes at screen size; flatten it
+     for print so content fills the page width cleanly. */
+  .mx-auto {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* ─── Verified badge ───────────────────────────────────────────────────── */
+  /* Preserve the badge border so it stays visually distinct without colour. */
+  [class*="rounded-full"] {
+    border: 1.5pt solid black !important;
+    border-radius: 99pt !important;
+    padding: 2pt 6pt !important;
+    font-size: 10pt !important;
+    font-weight: bold !important;
+  }
+
+  /* ─── Photo ────────────────────────────────────────────────────────────── */
+  img {
+    /* Keep the avatar readable on paper. Object-fit is honoured by most
+       modern print renderers (Chrome, Edge, Firefox 107+). */
+    width: 64pt !important;
+    height: 64pt !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    border: 1pt solid #999 !important;
+  }
+
+  /* ─── Critical data grid (blood group / genotype) ─────────────────────── */
+  dl {
+    border: 1.5pt solid black !important;
+    border-radius: 4pt !important;
+    padding: 8pt !important;
+    /* Prevent the grid from being split across pages */
+    break-inside: avoid;
+    page-break-inside: avoid; /* legacy alias */
+  }
+
+  dl dd {
+    font-size: 16pt !important;
+    font-weight: bold !important;
+    margin-top: 1pt;
+  }
+
+  dl dt {
+    font-size: 8pt !important;
+    font-weight: normal !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    color: #555 !important;
+  }
+
+  /* ─── Section headings ─────────────────────────────────────────────────── */
+  h1 {
+    font-size: 18pt !important;
+    font-weight: bold !important;
+    margin-bottom: 2pt;
+  }
+
+  h2 {
+    font-size: 10pt !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    color: #444 !important;
+    margin-bottom: 2pt;
+    /* Keep the heading with at least one line of the following paragraph */
+    break-after: avoid;
+    page-break-after: avoid; /* legacy alias */
+  }
+
+  /* ─── Content sections — don't orphan them across pages ───────────────── */
+  div > h2 + p,
+  div > h2 + ul {
+    break-before: avoid;
+    page-break-before: avoid; /* legacy alias */
+  }
+
+  /* Each labelled section should try to stay on one page */
+  main > div,
+  .flex-col > div {
+    break-inside: avoid;
+    page-break-inside: avoid; /* legacy alias */
+  }
+
+  /* ─── Emergency contacts list ──────────────────────────────────────────── */
+  ul {
+    list-style: none !important;
+    padding: 0 !important;
+  }
+
+  /* ─── Disclaimer footer ────────────────────────────────────────────────── */
+  /* Keep the disclaimer at the bottom; it must appear on the printout. */
+  p.text-xs {
+    font-size: 8pt !important;
+    color: #666 !important;
+    margin-top: 12pt !important;
+    break-before: avoid;
+    page-page-break-before: avoid; /* legacy alias */
+  }
+
+  /* ─── Hide screen-only navigation chrome ──────────────────────────────── */
+  /* The public card page has no nav bar today, but guard against one being
+     added to the shared root layout later. */
+  nav,
+  header,
+  footer:not(:last-child),
+  button,
+  [aria-label="navigation"] {
+    display: none !important;
+  }
+}
