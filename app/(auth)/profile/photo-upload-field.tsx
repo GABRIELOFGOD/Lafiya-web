@@ -17,57 +17,18 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 export function PhotoUploadField({
   userId,
   initialUrl,
+  serverError,
 }: {
   userId: string;
   initialUrl: string | null;
+  serverError?: string;
 }) {
   const [photoUrl, setPhotoUrl] = useState(initialUrl);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
-
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setError("Photo must be a PNG, JPEG, or WebP image.");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      setError("Photo must be under 5 MB.");
-      return;
-    }
-
-    setError(null);
-    setIsUploading(true);
-
-    const extension =
-      file.type === "image/png"
-        ? "png"
-        : file.type === "image/jpeg"
-          ? "jpg"
-          : "webp";
-    const path = `${userId}/photo.${extension}`;
-    const supabase = createClient();
-
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(path, file, { upsert: true, contentType: file.type });
-
-    if (uploadError) {
-      setError(uploadError.message);
-      setIsUploading(false);
-      return;
-    }
-
-    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    // Cache-bust so the new photo shows immediately after an overwrite.
-    setPhotoUrl(`${data.publicUrl}?updated=${Date.now()}`);
-    setIsUploading(false);
-  }
 
   return (
     <div>
@@ -101,8 +62,8 @@ export function PhotoUploadField({
           />
         </label>
       </div>
-      {error ? (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
+      {localError || serverError ? (
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{localError ?? serverError}</p>
       ) : null}
     </div>
   );
