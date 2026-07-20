@@ -13,12 +13,10 @@ const CURRENT_POLICY_VERSION = "ndpa-2023-v1";
 const signUpSchema = z.object({
   email: z.email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  consent: z.preprocess(
-    (val) => (val === "on" || val === "true" ? "true" : "false"),
-    z.string().refine((val) => val === "true", {
-      message: "You must accept the privacy notice to create an account",
-    }),
-  ),
+  consent: z
+    .string()
+    .transform((val) => val === "on")
+    .refine((val) => val, "You must accept the privacy policy to continue"),
 });
 
 export interface SignUpState {
