@@ -25,7 +25,7 @@ export function PhotoUploadField({
 }) {
   void userId;
   const [photoUrl, setPhotoUrl] = useState(initialUrl);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const activeError = error || serverError;

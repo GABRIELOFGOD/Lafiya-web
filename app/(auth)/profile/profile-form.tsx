@@ -219,6 +219,9 @@ export function ProfileForm({
     undefined,
   );
 
+  // Helper to get field error for a given key
+  const getFieldError = (key: string) => state?.fieldErrors?.[key];
+
   return (
     <form action={formAction} className="flex flex-col gap-6">
       {profile ? (
