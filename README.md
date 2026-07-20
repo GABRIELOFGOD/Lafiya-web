@@ -35,7 +35,7 @@ In Nigeria, health records are paper, siloed per facility, and effectively lost 
 ## Features
 
 - **Lafiya Card**: a patient-owned profile behind a login; the patient chooses exactly what appears on a minimal, read-only public emergency page reachable by QR
-- **Offline-first emergency page**: readable without a login and without a network connection once cached, so a responder can read it in a dead zone
+- **Offline-first emergency page**: readable without a login and without a network connection once cached, so a responder can read it in a dead zone — implemented via a service worker (see [Architecture › Offline support](#offline-support))
 - **Cryptographic attestation (Soroban)**: a licensed health worker's verification is recorded on-chain as a hash of the record + the attester's identity + a timestamp — never the health data itself
 - **CHW incentive rails (USDC on Stellar)**: community health workers are paid a micro-amount per verified registration, with near-zero fees and stablecoin settlement
 - **Transparent funding**: grant and donor funds flow on-chain into the CHW incentive pool, so every dollar maps to a countable number of verified cards
@@ -87,6 +87,20 @@ graph TB
 - **lib/supabase/**: Supabase client/server helpers and hand-authored types for the off-chain encrypted store
 - **lib/stellar/**: Soroban attestation lookup — `getAttestation(recordHash)` calls the deployed `lafiya-contracts` registry over RPC when `ATTESTATION_CONTRACT_ID` is set, and falls back to an in-memory mock otherwise
 - **lib/qr/**: QR code generation for the emergency page
+
+### Offline support
+
+The public card page is the product surface that matters most precisely where there is _no_ network — a responder scanning a QR in a dead zone. It is a `force-dynamic` Server Component (it must read live Supabase data and must never be indexed), so on its own it cannot render without a connection. A service worker bridges that gap **without** changing the page's security or freshness model.
+
+- **What is cached:** the rendered HTML of each `/card/[id]` page the responder has _actually opened while online_. Nothing is prefetched or speculatively cached — a card you haven't been shown is never stored.
+- **Strategy:** _cache after a real visit_ (network-first with cache fallback). Every successful navigation stores the HTML plus the fetch time. When the network fails, the last cached copy is served. Only `2xx` responses are cached; `404`s from `notFound()` (malformed or unknown id) and server errors are never stored, so a stale "not found" is never served from cache.
+- **Staleness is explicit:** when a cached copy is served, the worker injects a visible `Showing cached data as of <time>` banner (inline-styled so it shows even before the app's stylesheet loads). A responder always knows they are looking at last-known data, not a live record.
+- **Legibility offline:** the stylesheets referenced by card pages are cached separately (cache-first) so a cached card stays readable; JavaScript chunks are intentionally _not_ cached, which keeps the page from re-hydrating offline and silently dropping the injected banner.
+- **Scope:** the worker is registered for the whole origin (so it is active before the first card visit) but its fetch handler only acts on `/card/*` navigations and card stylesheets — auth pages, the API, and every other route pass through untouched.
+
+Implementation: `public/sw.js` (the worker), `public/offline-cache-helpers.js` (pure banner/injection helpers, unit-tested), and `app/offline-register.tsx` (registers the worker from the root layout, skipped in development).
+
+> **Composes with the wider offline epic.** This is the service-worker half of Lafiya's offline support. The companion pieces — a PWA manifest and a client-side card-data cache — slot in around the same `/card/*` boundary; see the issue batch. The service worker alone already satisfies "a previously-viewed card renders offline with a visible staleness indicator."
 
 The Soroban attestation registry, attester allowlist, and CHW verifier tool live in the `lafiya-contracts` and `lafiya-verifier` repos respectively — see [Lafiya Organization](#lafiya-organization).
 
@@ -234,8 +248,22 @@ npm run test:integration  # RLS + RPC tests against real local Postgres
 - [x] QR generation produces a valid, input-dependent data URL
 - [x] Verified-indicator rendering for both the verified and not-yet-verified states
 - [x] `get_emergency_card` RPC contract: valid id, unknown id, anon-callable, no extra columns leak
+- [x] Service-worker offline helpers: banner injection + timestamp formatting are unit-tested (`tests/unit/offline-cache-helpers.test.ts`); end-to-end offline behaviour is covered by the manual protocol below
 
 Run `npm run lint && npm run typecheck && npm run build` for the same checks CI runs on every push/PR (see `.github/workflows/ci.yml`).
+
+### Offline support — manual test protocol
+
+Service-worker behaviour can't be exercised under jsdom, so verify it in a real browser (Chromium/Firefox/Safari) against a running dev or preview build:
+
+1. **Prerequisite:** `npm run dev` (or a production `npm run build && npm start`) with a reachable Supabase. Registration is skipped in `development` mode, so for the service worker to register, use a production build/start or temporarily force the register path.
+2. **Warm the cache:** open `/card/11111111-1111-1111-1111-111111111111` while online. Confirm the page renders and DevTools ▸ Application ▸ Service Workers shows `sw.js` as activated, and Cache Storage ▸ `lafiya-cards-v1` holds an entry for that URL.
+3. **Go offline:** in DevTools ▸ Network set "Offline" (or stop the network interface). Reload `/card/11111111-1111-1111-1111-111111111111`.
+   - **Expected:** the card renders from cache, and a sticky amber banner reads `Showing cached data as of <time>. This may be out of date — verify with the patient or facility when you can.`
+4. **Scope check:** while offline, try a card id you have _never_ opened (e.g. `/card/22222222-2222-2222-2222-222222222222`).
+   - **Expected:** the "No cached card available" fallback, never a guessed/partial card. Caching only ever happens for cards you have actually visited.
+5. **No stale "not found":** while online, open a non-existent id → `404`. Go offline and reload that same id → still `404` (errors are never cached), not a previously-cached card.
+6. **Freshness:** go back online and reload → the banner disappears (live data, no injected banner).
 
 ## Roadmap
 
@@ -244,6 +272,7 @@ Run `npm run lint && npm run typecheck && npm run build` for the same checks CI 
 - [x] Patient can create a profile via `lafiya-web` (auth, and a field-by-field editor: identity, blood group/genotype, allergies/medications, chronic conditions, up to 3 emergency contacts, optional photo)
 - [x] Public, read-only emergency page reachable by QR, with a verified-indicator placeholder ahead of real M1 attestation
 - [x] Unit, component, and integration test coverage, with CI on every push/PR
+- [x] Offline-first emergency page: a service worker caches each visited `/card/[id]` and shows a "cached as of" indicator when read without a network — see [Architecture › Offline support](#offline-support)
 - [ ] Deployed to Vercel against Stellar testnet config
 
 ### M1 — Attestation
