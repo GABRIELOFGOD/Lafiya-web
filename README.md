@@ -247,6 +247,7 @@ npm run test:integration  # RLS + RPC tests against real local Postgres
 - [x] Row-Level Security policies enforce patient-only read/write access (plus a table-level GRANT, which RLS alone doesn't provide)
 - [x] QR generation produces a valid, input-dependent data URL
 - [x] Verified-indicator rendering for both the verified and not-yet-verified states
+- [x] Attestation lookup Route Handler (`/api/attestation/[recordHash]`): valid/unknown hashes, regex boundary validation, and response shape stability
 - [x] `get_emergency_card` RPC contract: valid id, unknown id, anon-callable, no extra columns leak
 - [x] Service-worker offline helpers: banner injection + timestamp formatting are unit-tested (`tests/unit/offline-cache-helpers.test.ts`); end-to-end offline behaviour is covered by the manual protocol below
 
