@@ -12,11 +12,13 @@ export function TagListField({
   label,
   placeholder,
   initialValues,
+  error,
 }: {
   name: string;
   label: string;
   placeholder?: string;
   initialValues: string[];
+  error?: string;
 }) {
   const [values, setValues] = useState(
     initialValues.length > 0 ? initialValues : [""],
@@ -40,6 +42,8 @@ export function TagListField({
                 next[index] = event.target.value;
                 setValues(next);
               }}
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? `${name}-error` : undefined}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
             <button
@@ -61,6 +65,11 @@ export function TagListField({
       >
         + Add {label.toLowerCase()}
       </button>
+      {error ? (
+        <p id={`${name}-error`} className="mt-1 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

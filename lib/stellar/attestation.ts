@@ -1,13 +1,35 @@
+import {
+  Account,
+  BASE_FEE,
+  Contract,
+  Keypair,
+  TransactionBuilder,
+  nativeToScVal,
+  rpc,
+  scValToNative,
+} from "@stellar/stellar-sdk";
+
 import type { Attestation } from "@/lib/attestation/types";
+import { serverEnv } from "@/lib/env";
 
 /**
- * Pre-M1 stub. `lafiya-contracts` (the Soroban attestation registry) hasn't
- * been built or deployed yet, so this is an in-memory mock rather than a
- * real RPC call — see README.md > Soroban Smart Contract Layer. Swap the
- * body for a real `get_attestation` Soroban contract call once that repo
- * ships; the function signature is designed to stay the same so callers
- * (the public card page, the attestation Route Handler) don't need to
- * change.
+ * Live M1 attestation lookup.
+ *
+ * When `ATTESTATION_CONTRACT_ID` is configured, `getAttestation` calls the
+ * real `get_attestation` Soroban function on the deployed `lafiya-contracts`
+ * registry over JSON-RPC (see README.md > M1 — Attestation). The call is
+ * read-only: we `simulateTransaction` it, which costs nothing and needs no
+ * signing, but still executes the contract and returns the on-chain
+ * `Attestation` for the given record hash.
+ *
+ * When `ATTESTATION_CONTRACT_ID` is unset (local dev, CI, or pre-deploy), the
+ * function falls back to the in-memory mock below so the verified indicator,
+ * the public card page, and the attestation Route Handler all keep working
+ * without a contract. This fallback is intentional and documented; flip it off
+ * by setting `ATTESTATION_CONTRACT_ID` in the environment.
+ *
+ * The function signature is unchanged from the pre-M1 stub, so neither caller
+ * (the public card page nor the attestation Route Handler) needs to change.
  */
 
 /** Fixture hash for local dev/demo only — not a real record's hash. */
@@ -24,8 +46,104 @@ const MOCK_ATTESTATIONS = new Map<string, Attestation>([
   ],
 ]);
 
+// simulateTransaction needs a source account, but since we never submit the
+// transaction it's just a placeholder — any well-formed account works. Built
+// lazily (only on the real-RPC path) so importing this module doesn't require
+// a valid account and the local-dev mock fallback stays side-effect free.
+function simulationSource() {
+  return new Account(Keypair.random().publicKey(), "0");
+}
+
 export async function getAttestation(
   recordHash: string,
 ): Promise<Attestation | null> {
-  return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+  // Local-dev / pre-deploy fallback: no contract configured yet.
+  if (!serverEnv.ATTESTATION_CONTRACT_ID) {
+    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+  }
+
+  const server = new rpc.Server(serverEnv.SOROBAN_RPC_URL);
+  const contract = new Contract(serverEnv.ATTESTATION_CONTRACT_ID);
+
+  const recordHashBytes = Buffer.from(recordHash, "hex");
+  const invocation = contract.call(
+    "get_attestation",
+    nativeToScVal(recordHashBytes, { type: "bytes" }),
+  );
+
+  const tx = new TransactionBuilder(simulationSource(), {
+    fee: BASE_FEE,
+    networkPassphrase: serverEnv.STELLAR_NETWORK_PASSPHRASE,
+  })
+    .addOperation(invocation)
+    .setTimeout(30)
+    .build();
+
+  const simulation = await server.simulateTransaction(tx);
+
+  // A record hash with no attestation reverts in-contract; the simulation
+  // reports an error rather than a value. Treat that as "not verified".
+  if (!rpc.Api.isSimulationSuccess(simulation)) {
+    return null;
+  }
+
+  const retval = simulation.result?.retval;
+  if (!retval) {
+    return null;
+  }
+
+  return decodeAttestation(scValToNative(retval), recordHash);
+}
+
+/**
+ * The contract returns the `Attestation` struct
+ * ({ record_hash, attester, timestamp }). Decoding is defensive: we don't
+ * assume the exact SCVal key casing (Rust struct field names may surface as
+ * snake_case or camelCase depending on the spec), and we validate types so a
+ * malformed on-chain value can't quietly poison the verified indicator.
+ */
+function decodeAttestation(value: unknown, recordHash: string): Attestation | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+
+  const attester = extractAddress(raw.attester);
+  const timestamp = extractTimestamp(raw.timestamp);
+
+  if (typeof attester !== "string" || typeof timestamp !== "number") {
+    return null;
+  }
+
+  return {
+    recordHash,
+    attester,
+    timestamp,
+  };
+}
+
+function extractAddress(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+  // An Address SCVal decodes to a string via its toString(); guard anyway.
+  if (value && typeof (value as { toString?: () => string }).toString === "function") {
+    const str = String(value);
+    if (str.startsWith("G") || str.startsWith("C")) {
+      return str;
+    }
+  }
+  return null;
+}
+
+function extractTimestamp(value: unknown): number | null {
+  if (typeof value === "number") {
+    return value;
+  }
+  // u64/i64 SCVal decode to bigint; convert losslessly within JS safe range.
+  if (typeof value === "bigint") {
+    const num = Number(value);
+    return Number.isSafeInteger(num) ? num : null;
+  }
+  return null;
 }
