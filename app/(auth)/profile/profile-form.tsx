@@ -24,6 +24,28 @@ export function ProfileForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
+      {profile ? (
+        <input
+          type="hidden"
+          name="expectedUpdatedAt"
+          value={profile.updated_at}
+        />
+      ) : null}
+
+      {state?.error && !state.error.includes("This profile was updated elsewhere since you loaded this page") ? (
+        <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
+      ) : null}
+      {state?.success ? (
+        <p className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</p>
+      ) : null}
+
+      {state?.error?.includes("This profile was updated elsewhere since you loaded this page") ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-400/40 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="font-medium">Conflict detected</p>
+          <p className="mt-1">This profile was updated elsewhere since you loaded this page. Reload and reapply your changes before saving.</p>
+        </div>
+      ) : null}
+
       <PhotoUploadField
         userId={userId}
         initialUrl={profile?.photo_url ?? null}
@@ -187,17 +209,6 @@ export function ProfileForm({
         initialValues={profile?.emergency_contacts ?? []}
         error={state?.errors?.emergencyContacts}
       />
-
-      {state?.error ? (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          {state.error}
-        </p>
-      ) : null}
-      {state?.success ? (
-        <p role="status" className="text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </p>
-      ) : null}
 
       <button
         type="submit"
