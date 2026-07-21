@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getBaseUrl } from "@/lib/url/getBaseUrl";
 
 import { SignOutButton } from "../signout/sign-out-button";
+import { DeleteAccountButton } from "./delete-account-button";
 import { ProfileForm } from "./profile-form";
 import { QrCardDisplay } from "./qr-card-display";
 
@@ -45,6 +46,15 @@ export default async function ProfilePage() {
       ) : null}
 
       <ProfileForm profile={profile} userId={user.id} />
+
+      <hr className="border-zinc-200 dark:border-zinc-800" />
+
+      <div className="flex flex-col gap-4">
+        <h2 className="text-sm font-medium text-red-600 dark:text-red-400">
+          Danger zone
+        </h2>
+        <DeleteAccountButton />
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   DEMO_VERIFIED_RECORD_HASH,
   attestationBreaker,
   getAttestation,
+  sorobanClient,
 } from "./attestation";
 
 describe("CircuitBreaker", () => {
@@ -92,17 +93,24 @@ describe("getAttestation", () => {
     vi.useFakeTimers();
     attestationBreaker.reset();
 
-    // Patch the module-level MOCK_ATTESTATIONS lookup to simulate a hanging
-    // RPC by making the underlying promise never resolve within the timeout.
-    // We do this by using a real spy on the module: instead we verify the
-    // timeout via the exported ATTESTATION_TIMEOUT_MS constant and fake timers.
+    // Patch the module-level sorobanClient.getAttestation lookup to simulate
+    // a hanging RPC by returning a promise that never resolves.
+    const spy = vi
+      .spyOn(sorobanClient, "getAttestation")
+      .mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(null), 10000)),
+      );
+
     const hangingCall = getAttestation("c".repeat(64));
+    // Prevent unhandled rejection warning when advancing fake timers
+    hangingCall.catch(() => {});
 
     // Advance past the internal deadline
     await vi.advanceTimersByTimeAsync(ATTESTATION_TIMEOUT_MS);
 
     await expect(hangingCall).rejects.toThrow("Attestation RPC timeout");
 
+    spy.mockRestore();
     vi.useRealTimers();
   });
 
@@ -110,9 +118,19 @@ describe("getAttestation", () => {
     vi.useFakeTimers();
     attestationBreaker.reset();
 
+    // Patch the module-level sorobanClient.getAttestation lookup to simulate
+    // a hanging RPC by returning a promise that never resolves.
+    const spy = vi
+      .spyOn(sorobanClient, "getAttestation")
+      .mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(null), 10000)),
+      );
+
     // Trip the breaker: 3 consecutive timeouts
     for (let i = 0; i < 3; i++) {
       const call = getAttestation("d".repeat(64));
+      // Prevent unhandled rejection warning when advancing fake timers
+      call.catch(() => {});
       await vi.advanceTimersByTimeAsync(ATTESTATION_TIMEOUT_MS);
       await expect(call).rejects.toThrow("Attestation RPC timeout");
     }
@@ -127,5 +145,7 @@ describe("getAttestation", () => {
     );
     // Should complete far under 100ms (no timer involved)
     expect(Date.now() - start).toBeLessThan(100);
+
+    spy.mockRestore();
   });
 });
