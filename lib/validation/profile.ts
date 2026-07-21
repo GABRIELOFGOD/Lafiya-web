@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const BLOOD_GROUPS = [
   "A+",
@@ -16,7 +17,14 @@ export const GENOTYPES = ["AA", "AS", "SS", "SC", "AC", "unknown"] as const;
 
 export const emergencyContactSchema = z.object({
   name: z.string().trim().min(1, "Contact name is required").max(100),
-  phone: z.string().trim().min(1, "Contact phone is required").max(30),
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Contact phone is required")
+    .max(30)
+    .refine((val) => isValidPhoneNumber(val, "NG"), {
+      message: "This doesn't look like a valid phone number",
+    }),
   relationship: z.string().trim().min(1, "Relationship is required").max(50),
 });
 

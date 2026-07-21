@@ -1,0 +1,92 @@
+version: 2
+
+updates:
+  # ── npm / Node.js dependencies ────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Lagos   # project timezone; adjust if needed
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - javascript
+    # Commit message prefix for easier scanning
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: scope
+    groups:
+      # Keep all Supabase packages in one PR
+      supabase:
+        patterns:
+          - "@supabase/*"
+      # Group the Next.js framework and its paired eslint config together
+      nextjs:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+      # React core + DOM + typings move in lock-step
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      # Testing stack: Vitest, Testing Library, jsdom
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@testing-library/*"
+          - "jsdom"
+      # Tailwind + PostCSS toolchain
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "prettier-plugin-tailwindcss"
+      # Linting / formatting tools
+      lint-format:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "prettier"
+      # TypeScript compiler + type stubs
+      typescript:
+        patterns:
+          - "typescript"
+          - "@types/node"
+          - "@types/qrcode"
+      # All remaining runtime deps in one batch
+      runtime-misc:
+        dependency-type: production
+        patterns:
+          - "*"
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Lagos
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(actions)"
+      include: scope
+    groups:
+      # Bump all official GitHub Actions in one PR
+      github-actions:
+        patterns:
+          - "actions/*"
+      # Supabase CLI action separately
+      supabase-actions:
+        patterns:
+          - "supabase/*"
