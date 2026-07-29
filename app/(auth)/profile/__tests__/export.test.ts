@@ -10,9 +10,9 @@ import { createClient } from "@/lib/supabase/server";
 
 describe("exportMyProfileData", () => {
   it("returns an error when not authenticated", async () => {
-    (createClient as any).mockReturnValue({
+    vi.mocked(createClient).mockResolvedValue({
       auth: { getUser: async () => ({ data: { user: null }, error: null }) },
-    });
+    } as unknown as Awaited<ReturnType<typeof createClient>>);
 
     const result = await exportMyProfileData();
     expect("error" in result).toBe(true);
@@ -25,7 +25,7 @@ describe("exportMyProfileData", () => {
       error: null,
     });
 
-    (createClient as any).mockReturnValue({
+    vi.mocked(createClient).mockResolvedValue({
       auth: {
         getUser: async () => ({
           data: { user: { id: "user-123" } },
@@ -35,7 +35,7 @@ describe("exportMyProfileData", () => {
       from: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({ eq: eqSpy, single: singleSpy }),
       }),
-    });
+    } as unknown as Awaited<ReturnType<typeof createClient>>);
 
     const result = await exportMyProfileData();
 

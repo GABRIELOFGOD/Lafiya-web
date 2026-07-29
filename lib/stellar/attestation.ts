@@ -11,7 +11,7 @@ import {
 import { unstable_cache } from "next/cache";
 
 import type { Attestation } from "@/lib/attestation/types";
-import { serverEnv } from "@/lib/env";
+import { serverEnv } from "@/lib/env-server";
 
 /**
  * Live M1 attestation lookup.
