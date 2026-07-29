@@ -10,8 +10,6 @@ import { logError } from "@/lib/logging/logger";
 
 const CURRENT_POLICY_VERSION = "ndpa-2023-v1";
 
-import { logError } from "@/lib/logging/logger";
-
 const signUpSchema = z.object({
   email: z.email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),

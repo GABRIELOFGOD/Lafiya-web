@@ -29,7 +29,7 @@ export type ProfileExport = {
  * structured export object. Relies on Supabase RLS — no service
  * role key is used, so a user can never fetch another user's row.
  */
-export async function exportMyProfileData(): Promise
+export async function exportMyProfileData(): Promise<
   { data: ProfileExport } | { error: string }
 > {
   const supabase = await createClient();
