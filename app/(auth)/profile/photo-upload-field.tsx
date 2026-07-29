@@ -3,8 +3,6 @@
 import Image from "next/image";
 import { useState } from "react";
 
-
-
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
