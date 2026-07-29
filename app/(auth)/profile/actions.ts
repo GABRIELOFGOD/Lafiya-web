@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { computeRecordHash } from "@/lib/attestation/recordHash";
+import { ensureRecordSecret, getSecretByUserId } from "@/lib/attestation/recordSecret";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ProfileRow } from "@/lib/supabase/types";
@@ -230,6 +232,22 @@ export async function upsertProfile(
     return { error: error.message };
   }
 
+  // Ensures this profile has a record_secret (the HMAC pepper backing
+  // computeRecordHash — see lib/attestation/recordSecret.ts) without ever
+  // regenerating an existing one, which would silently invalidate any past
+  // attestation for this patient. A failure here is logged, not fatal to
+  // the save itself — the profile save has already succeeded, and a
+  // missing secret degrades to "verification unavailable" rather than
+  // losing data.
+  try {
+    await ensureRecordSecret(user.id);
+  } catch (secretError) {
+    logError("Failed to ensure record secret", secretError, {
+      route: "/profile (action: upsertProfile)",
+      userId: user.id,
+    });
+  }
+
   const { data: updatedProfile } = await supabase
     .from("profiles")
     .select("card_public_id")
@@ -287,4 +305,65 @@ export async function deleteAccount(
 
   await supabase.auth.signOut();
   redirect("/");
+}
+
+/**
+ * Raises a "please re-verify my card" request for the caller's own
+ * currently-computed record hash (recomputed fresh here, never trusted
+ * from client input, so a stale/forged hash can't be queued). Minimal,
+ * queue-only implementation — actually re-attesting is a CHW-facing tool
+ * (lafiya-verifier) out of scope for this app; see
+ * supabase/migrations/20260729120200_reattestation_requests.sql.
+ *
+ * Idempotent: a second request for the same (user, hash) while one is
+ * still pending is treated as success rather than an error (unique
+ * partial index on the table enforces this at the DB level).
+ */
+export async function requestReattestation(
+  _prevState: ProfileFormState | undefined,
+  formData: FormData,
+): Promise<ProfileFormState> {
+  void formData;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "You must be signed in." };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    return { error: "No profile found." };
+  }
+
+  const secret = await getSecretByUserId(user.id);
+  if (!secret) {
+    return { error: "Could not compute your record hash. Please try again." };
+  }
+
+  const recordHash = computeRecordHash(profile, secret);
+
+  const { error } = await supabase
+    .from("reattestation_requests")
+    .insert({ user_id: user.id, record_hash: recordHash });
+
+  // 23505 = unique_violation: a pending request for this exact hash already
+  // exists — that's the desired end state, not a failure.
+  if (error && error.code !== "23505") {
+    logError("Failed to create reattestation request", error, {
+      route: "/profile (action: requestReattestation)",
+      userId: user.id,
+    });
+    return { error: error.message };
+  }
+
+  revalidatePath("/profile");
+  return { success: true };
 }

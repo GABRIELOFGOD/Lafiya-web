@@ -6,7 +6,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
 }));
 vi.mock("@/lib/stellar/attestation", () => ({
-  getAttestation: vi.fn(),
+  validateAttestation: vi.fn(),
+}));
+vi.mock("@/lib/attestation/recordSecret", () => ({
+  getSecretByCardPublicId: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -15,11 +18,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { createClient } from "@/lib/supabase/server";
-import { getAttestation } from "@/lib/stellar/attestation";
+import { getSecretByCardPublicId } from "@/lib/attestation/recordSecret";
+import { validateAttestation } from "@/lib/stellar/attestation";
 
 import PublicCardPage from "./page";
 
 const VALID_ID = "11111111-1111-1111-1111-111111111111";
+const FIXTURE_SECRET = "c".repeat(64);
 
 const fixtureCard = {
   name: "Amina Yusuf",
@@ -46,7 +51,8 @@ function mockRpc(result: { data: unknown; error: unknown }) {
 describe("PublicCardPage", () => {
   it("renders only the emergency subset for a valid card", async () => {
     mockRpc({ data: [fixtureCard], error: null });
-    vi.mocked(getAttestation).mockResolvedValue(null);
+    vi.mocked(getSecretByCardPublicId).mockResolvedValue(FIXTURE_SECRET);
+    vi.mocked(validateAttestation).mockResolvedValue(false);
 
     const jsx = await PublicCardPage({
       params: Promise.resolve({ id: VALID_ID }),
@@ -70,7 +76,8 @@ describe("PublicCardPage", () => {
 
   it("passes axe-core accessibility audit", async () => {
     mockRpc({ data: [fixtureCard], error: null });
-    vi.mocked(getAttestation).mockResolvedValue(null);
+    vi.mocked(getSecretByCardPublicId).mockResolvedValue(FIXTURE_SECRET);
+    vi.mocked(validateAttestation).mockResolvedValue(false);
 
     const jsx = await PublicCardPage({
       params: Promise.resolve({ id: VALID_ID }),
@@ -109,7 +116,8 @@ describe("PublicCardPage", () => {
 
   it("renders with unavailable status when attestation lookup fails", async () => {
     mockRpc({ data: [fixtureCard], error: null });
-    vi.mocked(getAttestation).mockRejectedValue(new Error("RPC failed"));
+    vi.mocked(getSecretByCardPublicId).mockResolvedValue(FIXTURE_SECRET);
+    vi.mocked(validateAttestation).mockRejectedValue(new Error("RPC failed"));
 
     const jsx = await PublicCardPage({
       params: Promise.resolve({ id: VALID_ID }),
@@ -123,10 +131,12 @@ describe("PublicCardPage", () => {
   it("renders with unavailable status when attestation lookup times out (simulates RPC hang + internal timeout)", async () => {
     // The real getAttestation enforces ATTESTATION_TIMEOUT_MS internally and
     // rejects with an "Attestation RPC timeout" error when the Soroban RPC
-    // hangs. This test mocks that rejection to assert the card page still
-    // renders all emergency data with a degraded badge — not a crash.
+    // hangs; validateAttestation propagates that rejection. This test mocks
+    // that rejection to assert the card page still renders all emergency
+    // data with a degraded badge — not a crash.
     mockRpc({ data: [fixtureCard], error: null });
-    vi.mocked(getAttestation).mockRejectedValue(
+    vi.mocked(getSecretByCardPublicId).mockResolvedValue(FIXTURE_SECRET);
+    vi.mocked(validateAttestation).mockRejectedValue(
       new Error("Attestation RPC timeout"),
     );
 
@@ -147,5 +157,22 @@ describe("PublicCardPage", () => {
     expect(
       screen.queryByText("Verified by a health worker"),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders with unavailable status when no record secret exists for the card", async () => {
+    // A card whose profile_secrets row is missing (should never happen in
+    // practice post-backfill/post-upsertProfile, but must degrade safely,
+    // not crash, if it ever does).
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getSecretByCardPublicId).mockResolvedValue(null);
+
+    const jsx = await PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    render(jsx);
+
+    expect(screen.getByText("Amina Yusuf")).toBeInTheDocument();
+    expect(screen.getByText("Verification status unavailable")).toBeInTheDocument();
+    expect(validateAttestation).not.toHaveBeenCalled();
   });
 });
