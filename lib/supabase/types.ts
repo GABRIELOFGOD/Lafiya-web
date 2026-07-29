@@ -80,6 +80,24 @@ export type RateLimitRecordFailureRow = {
   blocked_until: string | null;
 };
 
+/** Row shape of public.frequency_limits. See lib/frequency-limit.ts. */
+export type FrequencyLimitRow = {
+  key: string;
+  window_start: string;
+  count: number;
+};
+
+/**
+ * Return row shape of
+ * public.frequency_limit_check_and_increment(p_key text, p_max_count int,
+ * p_window_seconds int).
+ */
+export type FrequencyLimitCheckAndIncrementRow = {
+  allowed: boolean;
+  count: number;
+  retry_after_seconds: number;
+};
+
 /**
  * Matches the shape @supabase/supabase-js's `createClient<Database>()`
  * generic expects, so `.from("profiles")` and `.rpc("get_emergency_card")`
@@ -119,6 +137,12 @@ export type Database = {
         Update: Partial<RateLimitRow>;
         Relationships: [];
       };
+      frequency_limits: {
+        Row: FrequencyLimitRow;
+        Insert: Pick<FrequencyLimitRow, "key"> & Partial<FrequencyLimitRow>;
+        Update: Partial<FrequencyLimitRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -129,6 +153,14 @@ export type Database = {
       rate_limit_record_failure: {
         Args: { p_key: string };
         Returns: RateLimitRecordFailureRow[];
+      };
+      frequency_limit_check_and_increment: {
+        Args: {
+          p_key: string;
+          p_max_count: number;
+          p_window_seconds: number;
+        };
+        Returns: FrequencyLimitCheckAndIncrementRow[];
       };
     };
     Enums: {
