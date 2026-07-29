@@ -128,4 +128,48 @@ describe("upsertProfile optimistic concurrency", () => {
     expect(result).toEqual({ success: true });
     expect(upsertCalls).toBe(1);
   });
+
+  it("allows a brand-new user's first-ever save with no expectedUpdatedAt token (no prior row to conflict with)", async () => {
+    // Mirrors ProfileForm: the hidden expectedUpdatedAt input only renders
+    // when a `profile` prop was passed in, so a first-time save submits no
+    // such field at all — the concurrency check must not require one when
+    // there's no existing row to have conflicted with in the first place.
+    let upsertCalls = 0;
+    (mockCreateClient.createClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: authUser },
+        }),
+      },
+      from() {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  maybeSingle() {
+                    return Promise.resolve({ data: null });
+                  },
+                };
+              },
+            };
+          },
+          upsert() {
+            upsertCalls += 1;
+            return Promise.resolve({ error: null });
+          },
+        };
+      },
+    });
+
+    const data = new FormData();
+    data.set("name", "First Save");
+    data.set("bloodGroup", "unknown");
+    data.set("genotype", "unknown");
+
+    const result = await upsertProfile(undefined, data);
+
+    expect(result).toEqual({ success: true });
+    expect(upsertCalls).toBe(1);
+  });
 });

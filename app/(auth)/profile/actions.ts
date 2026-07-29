@@ -168,16 +168,24 @@ export async function upsertProfile(
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const expectedUpdatedAt = formData.get("expectedUpdatedAt")?.toString();
-  if (typeof expectedUpdatedAt !== "string" || expectedUpdatedAt.length === 0) {
-    return { error: "Missing concurrency token. Please reload the page." };
-  }
+  // Optimistic concurrency only applies to updating a row that already
+  // exists — a brand-new profile (existing === null, e.g. right after
+  // signup) has no prior version to conflict with, and ProfileForm only
+  // renders the expectedUpdatedAt hidden input when a profile is passed in,
+  // so requiring the token unconditionally here made every first-ever save
+  // fail with "Missing concurrency token."
+  if (existing) {
+    const expectedUpdatedAt = formData.get("expectedUpdatedAt")?.toString();
+    if (typeof expectedUpdatedAt !== "string" || expectedUpdatedAt.length === 0) {
+      return { error: "Missing concurrency token. Please reload the page." };
+    }
 
-  if (existing?.updated_at && existing.updated_at !== expectedUpdatedAt) {
-    return {
-      error:
-        "This profile was updated elsewhere since you loaded this page. Reload and reapply your changes before saving.",
-    };
+    if (existing.updated_at !== expectedUpdatedAt) {
+      return {
+        error:
+          "This profile was updated elsewhere since you loaded this page. Reload and reapply your changes before saving.",
+      };
+    }
   }
 
   const defaults = toFormDefaults(existing);
