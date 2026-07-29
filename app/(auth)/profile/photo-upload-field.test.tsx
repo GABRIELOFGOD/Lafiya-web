@@ -18,7 +18,12 @@ describe("PhotoUploadField", () => {
   it("rejects a disallowed MIME type without calling fetch", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    const user = userEvent.setup();
+    // user-event's upload() filters files against the input's `accept`
+    // attribute by default (matching real browser file-picker behavior),
+    // which would silently drop this PDF before it ever reaches the
+    // component. Disable that so this test can exercise the app's own
+    // MIME-type validation, not the browser's.
+    const user = userEvent.setup({ applyAccept: false });
 
     render(<PhotoUploadField userId="user-1" initialUrl={null} />);
 
