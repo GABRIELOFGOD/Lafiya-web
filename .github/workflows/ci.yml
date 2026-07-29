@@ -78,7 +78,8 @@ jobs:
           npx lhci assert
       - run: supabase stop
         if: always()
-e2e:
+
+  e2e:
     name: End-to-end tests (Playwright)
     runs-on: ubuntu-latest
     env:
