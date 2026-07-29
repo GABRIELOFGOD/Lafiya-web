@@ -28,7 +28,7 @@ export function PhotoUploadField({
   const [localError, setLocalError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const activeError = error || serverError;
+  const activeError = localError || serverError;
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -38,15 +38,15 @@ export function PhotoUploadField({
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setError("Photo must be a PNG, JPEG, or WebP image.");
+      setLocalError("Photo must be a PNG, JPEG, or WebP image.");
       return;
     }
     if (file.size > MAX_BYTES) {
-      setError("Photo must be under 5 MB.");
+      setLocalError("Photo must be under 5 MB.");
       return;
     }
 
-    setError(null);
+    setLocalError(null);
     setIsUploading(true);
 
     const formData = new FormData();
@@ -60,7 +60,7 @@ export function PhotoUploadField({
 
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
-        setError(
+        setLocalError(
           result.error || `Upload failed with status ${response.status}`,
         );
         setIsUploading(false);
@@ -72,7 +72,7 @@ export function PhotoUploadField({
       setPhotoUrl(`${publicUrl}?updated=${Date.now()}`);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      setError(errorMsg || "An unexpected error occurred.");
+      setLocalError(errorMsg || "An unexpected error occurred.");
     } finally {
       setIsUploading(false);
     }
