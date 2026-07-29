@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import type { EmergencyCardRow } from "@/lib/supabase/types";
 
-import { computeRecordHash } from "./recordHash";
+import { computeRecordHash, validateAttestation } from "./recordHash";
+
+// Mock getAttestation at the top level
+vi.mock("@/lib/stellar/attestation", () => ({
+  getAttestation: vi.fn(),
+}));
+
+import { getAttestation } from "@/lib/stellar/attestation";
 
 const baseCard: EmergencyCardRow = {
   name: "Amina Yusuf",
@@ -67,5 +74,62 @@ describe("computeRecordHash", () => {
     expect(computeRecordHash(baseCard)).not.toBe(
       computeRecordHash(differentContact),
     );
+  });
+});
+
+describe("validateAttestation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns true for a valid attestation", async () => {
+    const recordHash = "a".repeat(64);
+
+    vi.mocked(getAttestation).mockResolvedValue({
+      recordHash,
+      attester: "GATTESTERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      timestamp: 1735689600,
+    });
+
+    const result = await validateAttestation(recordHash);
+    expect(result).toBe(true);
+  });
+
+  it("returns false for a revoked attestation", async () => {
+    const recordHash = "a".repeat(64);
+
+    vi.mocked(getAttestation).mockResolvedValue({
+      recordHash,
+      attester: "GATTESTERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      timestamp: 1735689600,
+      revoked: true,
+    });
+
+    const result = await validateAttestation(recordHash);
+    expect(result).toBe(false);
+  });
+
+  it("returns false for an expired attestation", async () => {
+    const recordHash = "a".repeat(64);
+    const pastExpiry = Math.floor(Date.now() / 1000) - 1000; // 1000 seconds ago
+
+    vi.mocked(getAttestation).mockResolvedValue({
+      recordHash,
+      attester: "GATTESTERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      timestamp: 1735689600,
+      expiry: pastExpiry,
+    });
+
+    const result = await validateAttestation(recordHash);
+    expect(result).toBe(false);
+  });
+
+  it("returns false when attestation is null", async () => {
+    const recordHash = "a".repeat(64);
+
+    vi.mocked(getAttestation).mockResolvedValue(null);
+
+    const result = await validateAttestation(recordHash);
+    expect(result).toBe(false);
   });
 });
