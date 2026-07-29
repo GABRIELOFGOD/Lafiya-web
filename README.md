@@ -9,7 +9,7 @@ A patient-owned emergency health card on Stellar — the vitals that decide emer
 
 _Lafiya_ is Hausa for health, safety, and wellbeing.
 
-> **Status:** Pre-alpha · Stellar **testnet** · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
+> **Status:** Pre-alpha · Stellar **testnet** · Live: [lafiya-web.vercel.app](https://lafiya-web.vercel.app) · not yet audited · not a medical device. See [Disclaimer](#disclaimer).
 
 ## Overview
 
@@ -35,7 +35,7 @@ In Nigeria, health records are paper, siloed per facility, and effectively lost 
 ## Features
 
 - **Lafiya Card**: a patient-owned profile behind a login; the patient chooses exactly what appears on a minimal, read-only public emergency page reachable by QR
-- **Offline-first emergency page**: readable without a login and without a network connection once cached, so a responder can read it in a dead zone
+- **Offline-first emergency page**: readable without a login and without a network connection once cached, so a responder can read it in a dead zone — implemented via a service worker (see [Architecture › Offline support](#offline-support))
 - **Cryptographic attestation (Soroban)**: a licensed health worker's verification is recorded on-chain as a hash of the record + the attester's identity + a timestamp — never the health data itself
 - **CHW incentive rails (USDC on Stellar)**: community health workers are paid a micro-amount per verified registration, with near-zero fees and stablecoin settlement
 - **Transparent funding**: grant and donor funds flow on-chain into the CHW incentive pool, so every dollar maps to a countable number of verified cards
@@ -85,8 +85,22 @@ graph TB
 - **app/(public)/card/[id]**: public, read-only emergency page — the page a QR code points to
 - **app/(auth)/profile**: authenticated profile editor where a patient manages their private record
 - **lib/supabase/**: Supabase client/server helpers and hand-authored types for the off-chain encrypted store
-- **lib/stellar/**: pre-M1 attestation stub, ready to swap for a real Soroban contract call
+- **lib/stellar/**: Soroban attestation lookup — `getAttestation(recordHash)` calls the deployed `lafiya-contracts` registry over RPC when `ATTESTATION_CONTRACT_ID` is set, and falls back to an in-memory mock otherwise
 - **lib/qr/**: QR code generation for the emergency page
+
+### Offline support
+
+The public card page is the product surface that matters most precisely where there is _no_ network — a responder scanning a QR in a dead zone. It is a `force-dynamic` Server Component (it must read live Supabase data and must never be indexed), so on its own it cannot render without a connection. A service worker bridges that gap **without** changing the page's security or freshness model.
+
+- **What is cached:** the rendered HTML of each `/card/[id]` page the responder has _actually opened while online_. Nothing is prefetched or speculatively cached — a card you haven't been shown is never stored.
+- **Strategy:** _cache after a real visit_ (network-first with cache fallback). Every successful navigation stores the HTML plus the fetch time. When the network fails, the last cached copy is served. Only `2xx` responses are cached; `404`s from `notFound()` (malformed or unknown id) and server errors are never stored, so a stale "not found" is never served from cache.
+- **Staleness is explicit:** when a cached copy is served, the worker injects a visible `Showing cached data as of <time>` banner (inline-styled so it shows even before the app's stylesheet loads). A responder always knows they are looking at last-known data, not a live record.
+- **Legibility offline:** the stylesheets referenced by card pages are cached separately (cache-first) so a cached card stays readable; JavaScript chunks are intentionally _not_ cached, which keeps the page from re-hydrating offline and silently dropping the injected banner.
+- **Scope:** the worker is registered for the whole origin (so it is active before the first card visit) but its fetch handler only acts on `/card/*` navigations and card stylesheets — auth pages, the API, and every other route pass through untouched.
+
+Implementation: `public/sw.js` (the worker), `public/offline-cache-helpers.js` (pure banner/injection helpers, unit-tested), and `app/offline-register.tsx` (registers the worker from the root layout, skipped in development).
+
+> **Composes with the wider offline epic.** This is the service-worker half of Lafiya's offline support. The companion pieces — a PWA manifest and a client-side card-data cache — slot in around the same `/card/*` boundary; see the issue batch. The service worker alone already satisfies "a previously-viewed card renders offline with a visible staleness indicator."
 
 The Soroban attestation registry, attester allowlist, and CHW verifier tool live in the `lafiya-contracts` and `lafiya-verifier` repos respectively — see [Lafiya Organization](#lafiya-organization).
 
@@ -127,7 +141,7 @@ pub struct Attestation {
 
 This composability lets a responder's scanner, or any other Stellar-aware verifier, confirm a record was attested by a real, allowlisted health worker — without an external oracle and without ever seeing the health data.
 
-**M1 handoff point.** This repo already has the pieces that plug into the contract above: `lib/attestation/recordHash.ts` computes the deterministic hash a `lafiya-contracts` call would use, and `lib/stellar/attestation.ts` exposes a `getAttestation(recordHash)` function with the signature the real Soroban call will have — today it's an in-memory mock (documented in the file itself) since `lafiya-contracts` doesn't exist yet. Swapping the mock body for a real contract call, once that repo ships, shouldn't require touching any caller (the public card page, the attestation Route Handler).
+**M1 handoff point.** This repo already has the pieces that plug into the contract above: `lib/attestation/recordHash.ts` computes the deterministic hash a `lafiya-contracts` call would use, and `lib/stellar/attestation.ts` exposes a `getAttestation(recordHash)` function with the signature the real Soroban call has. The body now performs a read-only `simulateTransaction` against `get_attestation` on the deployed `lafiya-contracts` registry (via the Stellar SDK) whenever `ATTESTATION_CONTRACT_ID` is configured, and falls back to the original in-memory mock when it isn't set — so the public card page and the attestation Route Handler need no changes. A missing/unattested record hash reverts in-contract and is returned as `null` (not verified).
 
 ## Data Model (Emergency Subset)
 
@@ -148,6 +162,8 @@ Everything else (full history, documents, notes) stays private, behind authentic
 - **Nigeria Data Protection Act (2023)** governs all personal data held. Consent, encryption, and minimal disclosure are designed in from day one.
 - Patients opt into exactly what appears on their public page.
 - No health data on-chain; only non-reversible hashes and attestations.
+
+For the current threat model, access paths, and accepted tradeoffs across the public card, attestation lookup, avatars bucket, and authenticated profile editor, see the shared document in the separate docs repo: [lafiya-docs threat model](../lafiya-docs/threat-model.md).
 
 ## Repository Structure
 
@@ -233,9 +249,24 @@ npm run test:integration  # RLS + RPC tests against real local Postgres
 - [x] Row-Level Security policies enforce patient-only read/write access (plus a table-level GRANT, which RLS alone doesn't provide)
 - [x] QR generation produces a valid, input-dependent data URL
 - [x] Verified-indicator rendering for both the verified and not-yet-verified states
+- [x] Attestation lookup Route Handler (`/api/attestation/[recordHash]`): valid/unknown hashes, regex boundary validation, and response shape stability
 - [x] `get_emergency_card` RPC contract: valid id, unknown id, anon-callable, no extra columns leak
+- [x] Service-worker offline helpers: banner injection + timestamp formatting are unit-tested (`tests/unit/offline-cache-helpers.test.ts`); end-to-end offline behaviour is covered by the manual protocol below
 
 Run `npm run lint && npm run typecheck && npm run build` for the same checks CI runs on every push/PR (see `.github/workflows/ci.yml`).
+
+### Offline support — manual test protocol
+
+Service-worker behaviour can't be exercised under jsdom, so verify it in a real browser (Chromium/Firefox/Safari) against a running dev or preview build:
+
+1. **Prerequisite:** `npm run dev` (or a production `npm run build && npm start`) with a reachable Supabase. Registration is skipped in `development` mode, so for the service worker to register, use a production build/start or temporarily force the register path.
+2. **Warm the cache:** open `/card/11111111-1111-1111-1111-111111111111` while online. Confirm the page renders and DevTools ▸ Application ▸ Service Workers shows `sw.js` as activated, and Cache Storage ▸ `lafiya-cards-v1` holds an entry for that URL.
+3. **Go offline:** in DevTools ▸ Network set "Offline" (or stop the network interface). Reload `/card/11111111-1111-1111-1111-111111111111`.
+   - **Expected:** the card renders from cache, and a sticky amber banner reads `Showing cached data as of <time>. This may be out of date — verify with the patient or facility when you can.`
+4. **Scope check:** while offline, try a card id you have _never_ opened (e.g. `/card/22222222-2222-2222-2222-222222222222`).
+   - **Expected:** the "No cached card available" fallback, never a guessed/partial card. Caching only ever happens for cards you have actually visited.
+5. **No stale "not found":** while online, open a non-existent id → `404`. Go offline and reload that same id → still `404` (errors are never cached), not a previously-cached card.
+6. **Freshness:** go back online and reload → the banner disappears (live data, no injected banner).
 
 ## Roadmap
 
@@ -244,13 +275,15 @@ Run `npm run lint && npm run typecheck && npm run build` for the same checks CI 
 - [x] Patient can create a profile via `lafiya-web` (auth, and a field-by-field editor: identity, blood group/genotype, allergies/medications, chronic conditions, up to 3 emergency contacts, optional photo)
 - [x] Public, read-only emergency page reachable by QR, with a verified-indicator placeholder ahead of real M1 attestation
 - [x] Unit, component, and integration test coverage, with CI on every push/PR
+- [x] Offline-first emergency page: a service worker caches each visited `/card/[id]` and shows a "cached as of" indicator when read without a network — see [Architecture › Offline support](#offline-support)
 - [ ] Deployed to Vercel against Stellar testnet config
 
 ### M1 — Attestation
 
-- [ ] Soroban attestation registry deployed (`lafiya-contracts`)
-- [ ] Allowlisted attester can verify a record
-- [ ] Card displays a verified indicator
+- [ ] Soroban attestation registry deployed (`lafiya-contracts`) — owned by that repo; set `ATTESTATION_CONTRACT_ID` here once shipped
+- [x] `lafiya-web` calls the real `get_attestation` Soroban function over RPC when `ATTESTATION_CONTRACT_ID` is set, falling back to the in-memory mock otherwise (`lib/stellar/attestation.ts`)
+- [ ] Allowlisted attester can verify a record (contract-side; `lafiya-contracts`)
+- [x] Card displays a verified indicator driven by the real attestation lookup (public card page + `/api/attestation/[recordHash]`)
 
 ### M2 — Incentives
 
@@ -288,8 +321,8 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 - Supabase (`@supabase/supabase-js`, `@supabase/ssr`) — Postgres, Auth, Storage, Row-Level Security
 - `zod` — environment and form validation
 - `qrcode` — QR code generation
+- `@stellar/stellar-sdk` — Soroban RPC client used by `lib/stellar/attestation.ts` to read attestations (M1+)
 - Vitest, React Testing Library — unit, component, and integration tests
-- Soroban / Stellar SDK — planned for M1, once `lafiya-contracts` exists; not a dependency of this repo yet
 - W3C Verifiable Credentials data model, HL7 FHIR — standards informing the data model (see [References](#references))
 
 ## License
@@ -298,13 +331,24 @@ Lafiya is built as an open-source **Digital Public Good** (SDG 3, Good Health an
 
 ## Contributing
 
-Issues and PRs welcome. Contributors agree to the project's code of conduct and license terms.
+We welcome contributions to Lafiya! Please read our [Contributing Guide](CONTRIBUTING.md) for local setup, development guidelines, database migration instructions, and code conventions before submitting a pull request.
 
-Quick checklist for contributions:
+### Operations & Observability
 
-- `npm run lint && npm run typecheck && npm test && npm run build` all pass
-- New features include unit/component tests, and RLS/RPC changes include an integration test
-- Documentation is updated (this README and `lafiya-docs`)
+Lafiya integrates structured JSON logging and Sentry error tracking for observability.
+
+#### Rules for Logging
+
+1. **Never Log Patient Health Data:** Under no circumstances should any field from the emergency data model or authentication credentials be logged.
+2. **Central Redaction:** The logging utility (`lib/logging/logger.ts`) automatically and recursively redacts sensitive fields case-insensitively. This includes `name`, `age`, `dateOfBirth`/`date_of_birth`, `bloodGroup`/`blood_group`, `genotype`, `allergies`, `medications`, `chronicConditions`/`chronic_conditions`, `emergencyContacts`/`emergency_contacts`, `phone`, `relationship`, `language`, `photoUrl`/`photo_url`, `email`, and `password`.
+3. **Structured JSON Logs:** All server logs must use the `logInfo` and `logError` wrapper functions from `@/lib/logging/logger` so that they are output as queryable structured JSON and sent to Sentry.
+
+#### Sentry Configuration
+
+To configure Sentry in your environment, define the following variables:
+
+- `NEXT_PUBLIC_SENTRY_DSN` - Sentry client/server DSN endpoint.
+- `SENTRY_AUTH_TOKEN` - (Optional) Sentry build-time authentication token. If not provided, source map uploads are dynamically disabled during builds to prevent compilation failure.
 
 ## Lafiya Organization
 
@@ -360,7 +404,7 @@ If you change a field name, type, or hashing scheme here, update the Rust struct
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only, bypasses RLS; never exposed to the browser
 - `STELLAR_NETWORK_PASSPHRASE` — must match the network the contracts are deployed on
 - `SOROBAN_RPC_URL` — Soroban RPC endpoint (testnet first)
-- `ATTESTATION_CONTRACT_ID` — the deployed `lafiya-contracts` attestation registry contract id
+- `ATTESTATION_CONTRACT_ID` — the deployed `lafiya-contracts` attestation registry contract id. **Optional:** when unset (local dev, CI, pre-deploy), `getAttestation` serves the in-memory mock so the verified indicator still renders
 
 ### Open Integration Points (not yet implemented)
 
@@ -383,6 +427,7 @@ An agent working in only one of the five repos above can't see the others' code,
 For issues and questions:
 
 - GitHub Issues: [Create an issue](https://github.com/lafiya-xyz/lafiya-web/issues)
+- SECURITY policy: [SECURITY.md](SECURITY.md)
 
 ## Disclaimer
 

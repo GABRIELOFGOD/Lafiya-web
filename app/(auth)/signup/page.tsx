@@ -53,6 +53,29 @@ export default function SignUpPage() {
             />
           </div>
 
+          <div className="flex items-start gap-2">
+            <input
+              id="consent"
+              name="consent"
+              type="checkbox"
+              required
+              className="mt-1 h-4 w-4 rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:ring-zinc-50"
+            />
+            <label
+              htmlFor="consent"
+              className="text-sm text-zinc-600 dark:text-zinc-400"
+            >
+              I consent to the collection and processing of my health data in accordance with the{" "}
+              <Link
+                href="/privacy"
+                className="font-medium text-zinc-950 underline dark:text-zinc-50"
+              >
+                Privacy Notice
+              </Link>
+              .
+            </label>
+          </div>
+
           {state?.error ? (
             <p className="text-sm text-red-600 dark:text-red-400">
               {state.error}
@@ -63,6 +86,30 @@ export default function SignUpPage() {
               {state.info}
             </p>
           ) : null}
+
+          <div className="flex items-start gap-2">
+            <input
+              id="consent"
+              name="consent"
+              type="checkbox"
+              required
+              className="mt-1 h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
+            />
+            <label
+              htmlFor="consent"
+              className="text-sm text-zinc-600 dark:text-zinc-400"
+            >
+              I agree to the{" "}
+              <Link
+                href="/privacy"
+                className="font-medium text-zinc-950 underline dark:text-zinc-50"
+              >
+                privacy policy
+              </Link>{" "}
+              and understand my data is stored securely and never shared without
+              consent.
+            </label>
+          </div>
 
           <button
             type="submit"

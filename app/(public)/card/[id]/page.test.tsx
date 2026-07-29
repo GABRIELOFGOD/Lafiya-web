@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { axe } from "vitest-axe";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
@@ -67,6 +68,20 @@ describe("PublicCardPage", () => {
     expect(screen.queryByText(VALID_ID)).not.toBeInTheDocument();
   });
 
+  it("passes axe-core accessibility audit", async () => {
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getAttestation).mockResolvedValue(null);
+
+    const jsx = await PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    const { container } = render(jsx);
+
+    // Run axe against the document body to catch landmark violations
+    const results = await axe(document.body);
+    expect(results).toHaveNoViolations();
+  });
+
   it("calls notFound for a malformed id without querying the database", async () => {
     await expect(
       PublicCardPage({ params: Promise.resolve({ id: "not-a-uuid" }) }),
@@ -84,11 +99,53 @@ describe("PublicCardPage", () => {
     ).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
-  it("calls notFound when the RPC errors", async () => {
+  it("throws an unavailable error when the RPC errors, instead of notFound", async () => {
     mockRpc({ data: null, error: new Error("boom") });
 
     await expect(
       PublicCardPage({ params: Promise.resolve({ id: VALID_ID }) }),
-    ).rejects.toThrow("NEXT_NOT_FOUND");
+    ).rejects.toThrow("UNAVAILABLE");
+  });
+
+  it("renders with unavailable status when attestation lookup fails", async () => {
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getAttestation).mockRejectedValue(new Error("RPC failed"));
+
+    const jsx = await PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    render(jsx);
+
+    expect(screen.getByText("Amina Yusuf")).toBeInTheDocument();
+    expect(screen.getByText("Verification status unavailable")).toBeInTheDocument();
+  });
+
+  it("renders with unavailable status when attestation lookup times out (simulates RPC hang + internal timeout)", async () => {
+    // The real getAttestation enforces ATTESTATION_TIMEOUT_MS internally and
+    // rejects with an "Attestation RPC timeout" error when the Soroban RPC
+    // hangs. This test mocks that rejection to assert the card page still
+    // renders all emergency data with a degraded badge — not a crash.
+    mockRpc({ data: [fixtureCard], error: null });
+    vi.mocked(getAttestation).mockRejectedValue(
+      new Error("Attestation RPC timeout"),
+    );
+
+    const jsx = await PublicCardPage({
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    render(jsx);
+
+    // Full emergency data must render — attestation outage must never block it
+    expect(screen.getByText("Amina Yusuf")).toBeInTheDocument();
+    expect(screen.getByText("O+")).toBeInTheDocument();
+    expect(screen.getByText("Penicillin")).toBeInTheDocument();
+    // Degraded badge, not a broken page
+    expect(
+      screen.getByText("Verification status unavailable"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Not yet verified")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Verified by a health worker"),
+    ).not.toBeInTheDocument();
   });
 });
