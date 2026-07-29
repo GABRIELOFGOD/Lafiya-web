@@ -70,7 +70,7 @@ describe("CircuitBreaker", () => {
         await testBreaker.execute(async () => {
           throw new Error("RPC error");
         });
-      } catch (e) {
+      } catch {
         // Expected to fail
       }
     }
@@ -122,7 +122,7 @@ describe("getAttestation", () => {
         await attestationBreaker.execute(async () => {
           throw new Error("RPC error");
         });
-      } catch (e) {
+      } catch {
         // Expected to fail
       }
     }

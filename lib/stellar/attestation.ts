@@ -326,7 +326,7 @@ const getCachedAttestation = (() => {
         tags: ["attestation"],
       },
     );
-  } catch (error) {
+  } catch {
     // If unstable_cache fails (missing incremental cache context),
     // fall back to simple memoization
     return getAttestationMemoized;
