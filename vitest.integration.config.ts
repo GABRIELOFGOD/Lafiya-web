@@ -16,6 +16,7 @@ export default defineConfig({
   test: {
     name: "integration",
     environment: "node",
+    setupFiles: ["./tests/integration/setup.ts"],
     include: ["tests/integration/**/*.test.ts"],
     // Real network calls to a local Supabase stack are slower than jsdom
     // unit tests; give them room rather than flaking under load.

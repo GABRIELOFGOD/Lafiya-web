@@ -29,12 +29,87 @@ vi.mock("next/headers", () => ({
   headers: mockHeaders,
 }));
 
+// lib/rate-limit.ts now persists its state in Postgres (see
+// supabase/migrations/20260729120000_rate_limits_table.sql) instead of an
+// in-process Map, so it is durable across the concurrent/distributed
+// serverless instances this rate limiter actually has to run on. These unit
+// tests care about the sign-in action's policy logic, not Postgres itself
+// (that atomicity/cross-instance behavior is covered separately by
+// tests/integration/rate-limit.test.ts against a real local Supabase), so
+// the admin client is faked here with a plain in-memory store that
+// implements the same increment/backoff contract as the real
+// rate_limit_record_failure() SQL function.
+vi.mock("@/lib/supabase/admin", () => {
+  const store = new Map<
+    string,
+    { attempts: number; blocked_until: string | null }
+  >();
+
+  function computeBlockedUntil(attempts: number): string | null {
+    if (attempts < 5) return null;
+    const durationSeconds = Math.min(900, 30 * Math.pow(2, attempts - 5));
+    return new Date(Date.now() + durationSeconds * 1000).toISOString();
+  }
+
+  return {
+    createAdminClient: () => ({
+      from: (table: string) => {
+        if (table !== "rate_limits") {
+          throw new Error(`unexpected table in rate-limit fake: ${table}`);
+        }
+        return {
+          select: () => ({
+            eq: (_column: string, key: string) => ({
+              maybeSingle: async () => {
+                const record = store.get(key);
+                return {
+                  data: record
+                    ? { blocked_until: record.blocked_until }
+                    : null,
+                  error: null,
+                };
+              },
+            }),
+          }),
+          delete: () => ({
+            eq: async (_column: string, key: string) => {
+              store.delete(key);
+              return { error: null };
+            },
+            not: async () => {
+              store.clear();
+              return { error: null };
+            },
+          }),
+        };
+      },
+      rpc: async (fn: string, args: { p_key: string }) => {
+        if (fn !== "rate_limit_record_failure") {
+          throw new Error(`unexpected rpc in rate-limit fake: ${fn}`);
+        }
+        const record = store.get(args.p_key) ?? {
+          attempts: 0,
+          blocked_until: null,
+        };
+        record.attempts += 1;
+        record.blocked_until = computeBlockedUntil(record.attempts);
+        store.set(args.p_key, record);
+        return {
+          data: [
+            { attempts: record.attempts, blocked_until: record.blocked_until },
+          ],
+          error: null,
+        };
+      },
+    }),
+  };
+});
 
 describe("signIn server action rate limiting", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    clearAllRateLimits();
-    
+    await clearAllRateLimits();
+
     // Default headers mock returning client IP header
     mockHeaders.mockResolvedValue({
       get: (name: string) => {
