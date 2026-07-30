@@ -3,8 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { deleteAccountAndData } from "@/lib/account/deleteAccount";
 import { computeRecordHash } from "@/lib/attestation/recordHash";
-import { ensureRecordSecret, getSecretByUserId } from "@/lib/attestation/recordSecret";
+import {
+  ensureRecordSecret,
+  getSecretByUserId,
+} from "@/lib/attestation/recordSecret";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ProfileRow } from "@/lib/supabase/types";
@@ -176,7 +180,10 @@ export async function upsertProfile(
   // fail with "Missing concurrency token."
   if (existing) {
     const expectedUpdatedAt = formData.get("expectedUpdatedAt")?.toString();
-    if (typeof expectedUpdatedAt !== "string" || expectedUpdatedAt.length === 0) {
+    if (
+      typeof expectedUpdatedAt !== "string" ||
+      expectedUpdatedAt.length === 0
+    ) {
       return { error: "Missing concurrency token. Please reload the page." };
     }
 
@@ -289,26 +296,17 @@ export async function deleteAccount(
 
   const admin = createAdminClient();
 
-  const { data: objects } = await admin.storage
-    .from("avatars")
-    .list(user.id, { limit: 100 });
-
-  if (objects && objects.length > 0) {
-    const paths = objects.map((o) => `${user.id}/${o.name}`);
-    const { error: storageError } = await admin.storage
-      .from("avatars")
-      .remove(paths);
-
-    if (storageError) {
-      return { error: storageError.message };
-    }
-  }
-
-  const { error: deleteError } =
-    await admin.auth.admin.deleteUser(user.id);
-
-  if (deleteError) {
-    return { error: deleteError.message };
+  try {
+    await deleteAccountAndData(admin, user.id);
+  } catch (error) {
+    logError("Failed to delete account data", error, {
+      route: "/profile (action: deleteAccount)",
+      userId: user.id,
+    });
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to delete account.",
+    };
   }
 
   await supabase.auth.signOut();
