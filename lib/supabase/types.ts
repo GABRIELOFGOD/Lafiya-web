@@ -112,6 +112,38 @@ export type FrequencyLimitRow = {
   count: number;
 };
 
+export type ChwPayoutStatus = "pending" | "paid";
+
+export type ChwPayoutRow = {
+  id: string;
+  stellar_address: string;
+  chw_id: string | null;
+  record_hash: string;
+  attested_at: string;
+  amount_usdc: number;
+  status: ChwPayoutStatus;
+  payout_tx_hash: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StellarIndexerCursorRow = {
+  stream: "attestations" | "payments";
+  cursor: string;
+  updated_at: string;
+};
+
+export type ChwPayoutObservationRow = {
+  record_hash: string;
+  stellar_address: string;
+  amount_usdc: number;
+  payout_tx_hash: string;
+  paid_at: string;
+  paging_token: string;
+  created_at: string;
+};
+
 /**
  * Return row shape of
  * public.frequency_limit_check_and_increment(p_key text, p_max_count int,
@@ -158,7 +190,8 @@ export type Database = {
       };
       profile_secrets: {
         Row: ProfileSecretRow;
-        Insert: Partial<ProfileSecretRow> & Pick<ProfileSecretRow, "user_id" | "secret">;
+        Insert: Partial<ProfileSecretRow> &
+          Pick<ProfileSecretRow, "user_id" | "secret">;
         Update: Partial<Omit<ProfileSecretRow, "user_id">>;
         Relationships: [];
       };
@@ -173,6 +206,37 @@ export type Database = {
         Row: FrequencyLimitRow;
         Insert: Pick<FrequencyLimitRow, "key"> & Partial<FrequencyLimitRow>;
         Update: Partial<FrequencyLimitRow>;
+        Relationships: [];
+      };
+      rate_limits: {
+        Row: RateLimitRow;
+        Insert: Pick<RateLimitRow, "key"> & Partial<RateLimitRow>;
+        Update: Partial<RateLimitRow>;
+        Relationships: [];
+      };
+      chw_payouts: {
+        Row: ChwPayoutRow;
+        Insert: Pick<
+          ChwPayoutRow,
+          "stellar_address" | "record_hash" | "attested_at"
+        > &
+          Partial<ChwPayoutRow>;
+        Update: Partial<Omit<ChwPayoutRow, "id">>;
+        Relationships: [];
+      };
+      stellar_indexer_cursors: {
+        Row: StellarIndexerCursorRow;
+        Insert: Pick<StellarIndexerCursorRow, "stream" | "cursor"> &
+          Partial<StellarIndexerCursorRow>;
+        Update: Partial<Omit<StellarIndexerCursorRow, "stream">>;
+        Relationships: [];
+      };
+      chw_payout_observations: {
+        Row: ChwPayoutObservationRow;
+        Insert: Omit<ChwPayoutObservationRow, "created_at"> & {
+          created_at?: string;
+        };
+        Update: Partial<ChwPayoutObservationRow>;
         Relationships: [];
       };
     };
@@ -194,6 +258,25 @@ export type Database = {
         };
         Returns: FrequencyLimitCheckAndIncrementRow[];
       };
+      apply_chw_attestation: {
+        Args: {
+          p_record_hash: string;
+          p_stellar_address: string;
+          p_attested_at: string;
+        };
+        Returns: string;
+      };
+      apply_chw_payout: {
+        Args: {
+          p_record_hash: string;
+          p_stellar_address: string;
+          p_amount_usdc: number;
+          p_payout_tx_hash: string;
+          p_paid_at: string;
+          p_paging_token: string;
+        };
+        Returns: string;
+      };
     };
     Enums: {
       blood_group_enum: BloodGroup;
@@ -201,4 +284,3 @@ export type Database = {
     };
   };
 };
-

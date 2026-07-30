@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { deleteAccountAndData } from "@/lib/account/deleteAccount";
 import { computeRecordHash } from "@/lib/attestation/recordHash";
 import type { Database } from "@/lib/supabase/types";
 
@@ -18,6 +19,33 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const adminClient = createClient<Database>(url, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+async function waitForStorageRemoval(
+  bucket: string,
+  prefix: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const { data, error } = await adminClient.storage.from(bucket).list(prefix);
+    if (error) {
+      throw error;
+    }
+    if (!data || data.length === 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  const { data, error } = await adminClient.storage.from(bucket).list(prefix);
+  if (error) {
+    throw error;
+  }
+  throw new Error(
+    `Storage objects were not removed within ${timeoutMs}ms: ${JSON.stringify(data)}`,
+  );
+}
 
 describe("account deletion", () => {
   let user: TestUser;
@@ -57,10 +85,14 @@ describe("account deletion", () => {
 
     const { error: uploadError } = await adminClient.storage
       .from("avatars")
-      .upload(`${user.id}/${storagePath}`, new Blob(["fake-image-data"]), {
-        contentType: "image/png",
-        upsert: true,
-      });
+      .upload(
+        `${user.id}/${storagePath}`,
+        new Blob(["fake-image-data"], { type: "image/png" }),
+        {
+          contentType: "image/png",
+          upsert: true,
+        },
+      );
 
     if (uploadError) {
       throw uploadError;
@@ -69,7 +101,9 @@ describe("account deletion", () => {
 
   afterAll(async () => {
     // Best-effort cleanup if a test failed before deletion happened.
-    await adminClient.storage.from("avatars").remove([`${user.id}/${storagePath}`]);
+    await adminClient.storage
+      .from("avatars")
+      .remove([`${user.id}/${storagePath}`]);
     await deleteTestUser(user.id);
   });
 
@@ -88,11 +122,10 @@ describe("account deletion", () => {
       .list(user.id);
     expect(objectsBefore).toHaveLength(1);
 
-    // 3. Delete the auth user (same as what the server action does —
-    //    auth.admin.deleteUser). This cascades to the profile row.
-    const { error: deleteError } =
-      await adminClient.auth.admin.deleteUser(user.id);
-    expect(deleteError).toBeNull();
+    // 3. Exercise the same storage cleanup + auth deletion operation used by
+    //    the server action. Deleting an auth user alone does not cascade into
+    //    Supabase Storage.
+    await deleteAccountAndData(adminClient, user.id);
 
     // 4. Profile row is gone (cascade delete).
     const { data: profileAfter } = await adminClient
@@ -102,7 +135,9 @@ describe("account deletion", () => {
       .maybeSingle();
     expect(profileAfter).toBeNull();
 
-    // 5. Storage object is gone (explicitly cleaned up).
+    // 5. Storage object is gone. Allow a bounded window for the Storage API's
+    //    list endpoint to reflect the completed removal.
+    await waitForStorageRemoval("avatars", user.id);
     const { data: objectsAfter } = await adminClient.storage
       .from("avatars")
       .list(user.id);
@@ -156,7 +191,11 @@ describe("account deletion destroys future preimage-search feasibility", () => {
     allergies: [] as string[],
     medications: [] as string[],
     chronic_conditions: [] as string[],
-    emergency_contacts: [] as { name: string; phone: string; relationship: string }[],
+    emergency_contacts: [] as {
+      name: string;
+      phone: string;
+      relationship: string;
+    }[],
     language: "Hausa",
   };
 
@@ -204,7 +243,9 @@ describe("account deletion destroys future preimage-search feasibility", () => {
     // below isn't just a harness that never finds anything.
     expect(computeRecordHash(knownFields, realSecret)).toBe(preDeletionHash);
 
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(user.id);
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(
+      user.id,
+    );
     expect(deleteError).toBeNull();
 
     const { data: secretAfter } = await adminClient

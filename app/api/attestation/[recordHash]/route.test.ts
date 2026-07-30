@@ -5,9 +5,33 @@ vi.mock("@/lib/stellar/attestation", () => ({
   DEMO_VERIFIED_RECORD_HASH: "a".repeat(64),
 }));
 
-const { mockHeaders } = vi.hoisted(() => ({ mockHeaders: vi.fn() }));
+const { mockHeaders, rateLimitAttempts } = vi.hoisted(() => ({
+  mockHeaders: vi.fn(),
+  rateLimitAttempts: new Map<string, number>(),
+}));
 vi.mock("next/headers", () => ({
   headers: mockHeaders,
+}));
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(async (key: string) => {
+    const attempts = rateLimitAttempts.get(key) ?? 0;
+    return {
+      allowed: attempts < 5,
+      blockedUntil: attempts < 5 ? null : new Date(Date.now() + 30_000),
+      secondsRemaining: attempts < 5 ? 0 : 30,
+    };
+  }),
+  recordFailure: vi.fn(async (key: string) => {
+    rateLimitAttempts.set(key, (rateLimitAttempts.get(key) ?? 0) + 1);
+  }),
+  clearAllRateLimits: vi.fn(async () => {
+    rateLimitAttempts.clear();
+  }),
+  getClientIp: vi.fn(async () => {
+    const headers = await mockHeaders();
+    const forwardedFor = headers.get("x-forwarded-for");
+    return forwardedFor?.split(",")[0]?.trim() || "127.0.0.1";
+  }),
 }));
 
 import { getAttestation } from "@/lib/stellar/attestation";
@@ -25,14 +49,17 @@ describe("Attestation Route Handler", () => {
   beforeEach(() => {
     clearAllRateLimits();
     mockHeaders.mockResolvedValue({
-      get: (name: string) => (name === "x-forwarded-for" ? "203.0.113.1" : null),
+      get: (name: string) =>
+        name === "x-forwarded-for" ? "203.0.113.1" : null,
     });
   });
 
   it("returns verified true and attestation object for a known valid hash", async () => {
     vi.mocked(getAttestation).mockResolvedValue(MOCK_ATTESTATION);
 
-    const request = new Request(`http://localhost/api/attestation/${VALID_HASH}`);
+    const request = new Request(
+      `http://localhost/api/attestation/${VALID_HASH}`,
+    );
     const response = await GET(request, {
       params: Promise.resolve({ recordHash: VALID_HASH }),
     });
@@ -48,7 +75,9 @@ describe("Attestation Route Handler", () => {
   it("returns verified false and null attestation for an unknown valid hash", async () => {
     vi.mocked(getAttestation).mockResolvedValue(null);
 
-    const request = new Request(`http://localhost/api/attestation/${VALID_HASH}`);
+    const request = new Request(
+      `http://localhost/api/attestation/${VALID_HASH}`,
+    );
     const response = await GET(request, {
       params: Promise.resolve({ recordHash: VALID_HASH }),
     });
@@ -65,7 +94,9 @@ describe("Attestation Route Handler", () => {
     const uppercaseHash = "A".repeat(64);
     vi.mocked(getAttestation).mockResolvedValue(null);
 
-    const request = new Request(`http://localhost/api/attestation/${uppercaseHash}`);
+    const request = new Request(
+      `http://localhost/api/attestation/${uppercaseHash}`,
+    );
     const response = await GET(request, {
       params: Promise.resolve({ recordHash: uppercaseHash }),
     });
@@ -79,7 +110,9 @@ describe("Attestation Route Handler", () => {
 
     it("rejects hash that is too short (63 characters)", async () => {
       const shortHash = "a".repeat(63);
-      const request = new Request(`http://localhost/api/attestation/${shortHash}`);
+      const request = new Request(
+        `http://localhost/api/attestation/${shortHash}`,
+      );
       const response = await GET(request, {
         params: Promise.resolve({ recordHash: shortHash }),
       });
@@ -92,7 +125,9 @@ describe("Attestation Route Handler", () => {
 
     it("rejects hash that is too long (65 characters)", async () => {
       const longHash = "a".repeat(65);
-      const request = new Request(`http://localhost/api/attestation/${longHash}`);
+      const request = new Request(
+        `http://localhost/api/attestation/${longHash}`,
+      );
       const response = await GET(request, {
         params: Promise.resolve({ recordHash: longHash }),
       });
@@ -105,7 +140,9 @@ describe("Attestation Route Handler", () => {
 
     it("rejects hash with non-hex characters (e.g. 'g')", async () => {
       const nonHexHash = "g" + "a".repeat(63);
-      const request = new Request(`http://localhost/api/attestation/${nonHexHash}`);
+      const request = new Request(
+        `http://localhost/api/attestation/${nonHexHash}`,
+      );
       const response = await GET(request, {
         params: Promise.resolve({ recordHash: nonHexHash }),
       });
@@ -132,7 +169,9 @@ describe("Attestation Route Handler", () => {
   it("ensures response shape stability with no unexpected internal fields", async () => {
     vi.mocked(getAttestation).mockResolvedValue(MOCK_ATTESTATION);
 
-    const request = new Request(`http://localhost/api/attestation/${VALID_HASH}`);
+    const request = new Request(
+      `http://localhost/api/attestation/${VALID_HASH}`,
+    );
     const response = await GET(request, {
       params: Promise.resolve({ recordHash: VALID_HASH }),
     });
@@ -169,9 +208,12 @@ describe("Attestation Route Handler", () => {
       vi.mocked(getAttestation).mockResolvedValue(null);
 
       for (let i = 0; i < 5; i++) {
-        await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
-          params: Promise.resolve({ recordHash: VALID_HASH }),
-        });
+        await GET(
+          new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+          {
+            params: Promise.resolve({ recordHash: VALID_HASH }),
+          },
+        );
       }
       vi.mocked(getAttestation).mockClear();
 
@@ -186,9 +228,12 @@ describe("Attestation Route Handler", () => {
       vi.mocked(getAttestation).mockResolvedValue(MOCK_ATTESTATION);
 
       for (let i = 0; i < 5; i++) {
-        await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
-          params: Promise.resolve({ recordHash: VALID_HASH }),
-        });
+        await GET(
+          new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+          {
+            params: Promise.resolve({ recordHash: VALID_HASH }),
+          },
+        );
       }
 
       const blocked = await GET(
@@ -202,13 +247,17 @@ describe("Attestation Route Handler", () => {
       vi.mocked(getAttestation).mockResolvedValue(null);
 
       for (let i = 0; i < 5; i++) {
-        await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
-          params: Promise.resolve({ recordHash: VALID_HASH }),
-        });
+        await GET(
+          new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+          {
+            params: Promise.resolve({ recordHash: VALID_HASH }),
+          },
+        );
       }
 
       mockHeaders.mockResolvedValue({
-        get: (name: string) => (name === "x-forwarded-for" ? "198.51.100.7" : null),
+        get: (name: string) =>
+          name === "x-forwarded-for" ? "198.51.100.7" : null,
       });
 
       const fromOtherIp = await GET(

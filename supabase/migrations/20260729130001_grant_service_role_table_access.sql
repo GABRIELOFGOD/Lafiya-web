@@ -29,6 +29,17 @@
 grant select, insert, update, delete on public.profiles to service_role;
 grant select, insert, update, delete on public.consent_logs to service_role;
 grant select, insert, update, delete on public.chw_payouts to service_role;
+grant select, insert, update, delete on public.profile_secrets to service_role;
+grant select, insert, update, delete on public.reattestation_requests to service_role;
+grant select, insert, update, delete on public.rate_limits to service_role;
+grant select, insert, update, delete on public.frequency_limits to service_role;
+
+-- Both functions revoke PUBLIC execution in their defining migrations. Grant
+-- only the server-side service role used by createAdminClient(); authenticated
+-- and anon clients remain unable to invoke either state-changing RPC.
+grant execute on function public.rate_limit_record_failure(text) to service_role;
+grant execute on function public.frequency_limit_check_and_increment(text, integer, integer)
+  to service_role;
 
 -- Migrations in this project run as the `postgres` role, so this affects
 -- objects `postgres` creates in `public` going forward — i.e. every future
@@ -36,3 +47,6 @@ grant select, insert, update, delete on public.chw_payouts to service_role;
 -- grant.
 alter default privileges in schema public
   grant select, insert, update, delete on tables to service_role;
+
+alter default privileges in schema public
+  grant execute on functions to service_role;

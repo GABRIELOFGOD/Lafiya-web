@@ -9,11 +9,15 @@ const SERVER_ONLY_ENV_VARS = [
   "STELLAR_NETWORK_PASSPHRASE",
   "SOROBAN_RPC_URL",
   "ATTESTATION_CONTRACT_ID",
+  "STELLAR_HORIZON_URL",
+  "STELLAR_USDC_ISSUER",
+  "CHW_INCENTIVE_POOL_ADDRESS",
+  "PAYOUT_INDEXER_START_LEDGER",
+  "PAYOUT_INDEXER_START_PAYMENT_CURSOR",
+  "PAYOUT_INDEXER_CRON_SECRET",
 ];
 
-const searchTargets = new Map(
-  SERVER_ONLY_ENV_VARS.map((name) => [name, name]),
-);
+const searchTargets = new Map(SERVER_ONLY_ENV_VARS.map((name) => [name, name]));
 
 for (const name of SERVER_ONLY_ENV_VARS) {
   const value = process.env[name]?.trim();
