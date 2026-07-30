@@ -57,10 +57,14 @@ describe("account deletion", () => {
 
     const { error: uploadError } = await adminClient.storage
       .from("avatars")
-      .upload(`${user.id}/${storagePath}`, new Blob(["fake-image-data"]), {
-        contentType: "image/png",
-        upsert: true,
-      });
+      .upload(
+        `${user.id}/${storagePath}`,
+        new Blob(["fake-image-data"], { type: "image/png" }),
+        {
+          contentType: "image/png",
+          upsert: true,
+        },
+      );
 
     if (uploadError) {
       throw uploadError;
@@ -69,7 +73,9 @@ describe("account deletion", () => {
 
   afterAll(async () => {
     // Best-effort cleanup if a test failed before deletion happened.
-    await adminClient.storage.from("avatars").remove([`${user.id}/${storagePath}`]);
+    await adminClient.storage
+      .from("avatars")
+      .remove([`${user.id}/${storagePath}`]);
     await deleteTestUser(user.id);
   });
 
@@ -90,8 +96,9 @@ describe("account deletion", () => {
 
     // 3. Delete the auth user (same as what the server action does —
     //    auth.admin.deleteUser). This cascades to the profile row.
-    const { error: deleteError } =
-      await adminClient.auth.admin.deleteUser(user.id);
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(
+      user.id,
+    );
     expect(deleteError).toBeNull();
 
     // 4. Profile row is gone (cascade delete).
@@ -156,7 +163,11 @@ describe("account deletion destroys future preimage-search feasibility", () => {
     allergies: [] as string[],
     medications: [] as string[],
     chronic_conditions: [] as string[],
-    emergency_contacts: [] as { name: string; phone: string; relationship: string }[],
+    emergency_contacts: [] as {
+      name: string;
+      phone: string;
+      relationship: string;
+    }[],
     language: "Hausa",
   };
 
@@ -204,7 +215,9 @@ describe("account deletion destroys future preimage-search feasibility", () => {
     // below isn't just a harness that never finds anything.
     expect(computeRecordHash(knownFields, realSecret)).toBe(preDeletionHash);
 
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(user.id);
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(
+      user.id,
+    );
     expect(deleteError).toBeNull();
 
     const { data: secretAfter } = await adminClient
