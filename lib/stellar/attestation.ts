@@ -55,6 +55,148 @@ export const DEMO_VERIFIED_RECORD_HASH = "a".repeat(64);
 export const ATTESTATION_TIMEOUT_MS = 2000;
 
 /**
+ * Circuit breaker states for protecting against cascading RPC failures.
+ * CLOSED: normal operation, requests pass through
+ * OPEN: fast-fail mode, no RPC attempts
+ * HALF-OPEN: one trial request allowed to test recovery
+ */
+type CircuitState = "CLOSED" | "OPEN" | "HALF-OPEN";
+
+/**
+ * Circuit breaker configuration.
+ */
+interface CircuitBreakerConfig {
+  /** Number of consecutive failures before tripping to OPEN */
+  failureThreshold: number;
+  /** Cooldown period in milliseconds before attempting HALF-OPEN */
+  cooldownMs: number;
+}
+
+/**
+ * Circuit breaker implementation following the Release It! pattern.
+ * Protects against cascading failures and hung RPC endpoints.
+ *
+ * Deployment model: Per-instance singleton for Vercel serverless.
+ * This is acceptable because:
+ * 1. Vercel reuses warm instances for concurrent requests within the same region
+ * 2. Each instance independently protects its own request flow
+ * 3. The breaker provides meaningful protection even if not fully distributed:
+ *    - During an outage, each instance will independently trip after 3 failures
+ *    - Fast-fail behavior prevents any single instance from hanging
+ *    - Cooldown ensures instances don't hammer a degraded endpoint
+ * 4. Adding Redis/distributed state would introduce infrastructure complexity
+ *    disproportionate to the benefit for this read-only, cache-backed operation
+ * 5. The primary goal is latency protection, not perfect coordination across instances
+ *
+ * Exported for testing.
+ */
+export class CircuitBreaker {
+  private state: CircuitState = "CLOSED";
+  private failureCount = 0;
+  private lastFailureTime: number | null = null;
+  private readonly config: CircuitBreakerConfig;
+
+  constructor(config: CircuitBreakerConfig) {
+    this.config = config;
+  }
+
+  /**
+   * Execute an operation through the circuit breaker.
+   * Fast-fails if OPEN, tracks failures, and manages state transitions.
+   */
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.state === "OPEN") {
+      if (this.shouldAttemptReset()) {
+        this.state = "HALF-OPEN";
+      } else {
+        throw new Error("Circuit breaker is OPEN");
+      }
+    }
+
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  /**
+   * Check if enough time has passed to attempt a reset to HALF-OPEN.
+   */
+  private shouldAttemptReset(): boolean {
+    if (this.lastFailureTime === null) return false;
+    const elapsed = Date.now() - this.lastFailureTime;
+    return elapsed >= this.config.cooldownMs;
+  }
+
+  /**
+   * Handle successful operation - reset failure count and close breaker.
+   */
+  private onSuccess(): void {
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.state = "CLOSED";
+  }
+
+  /**
+   * Handle failed operation - increment count and potentially trip breaker.
+   */
+  private onFailure(): void {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    if (this.failureCount >= this.config.failureThreshold) {
+      this.state = "OPEN";
+    }
+  }
+
+  /**
+   * Reset the breaker to CLOSED state (for testing or manual recovery).
+   */
+  reset(): void {
+    this.state = "CLOSED";
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+  }
+
+  /**
+   * Get current state (for testing/monitoring).
+   */
+  getState(): CircuitState {
+    return this.state;
+  }
+}
+
+/**
+ * Circuit breaker instance for attestation RPC calls.
+ * Trips after 3 consecutive failures, 30-second cooldown.
+ */
+export const attestationBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  cooldownMs: 30000,
+});
+
+/**
+ * Wrap an async operation with a hard timeout.
+ * Rejects with "Attestation RPC timeout" if the operation doesn't complete
+ * within ATTESTATION_TIMEOUT_MS.
+ *
+ * Exported for testing.
+ */
+export async function withTimeout<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("Attestation RPC timeout")), timeoutMs);
+  });
+
+  return Promise.race([operation(), timeoutPromise]);
+}
+
+/**
  * How long a cached attestation lookup is considered fresh, in seconds.
  * Configurable via env so it can be tuned without a code change.
  * Default: 120s.
@@ -83,67 +225,118 @@ function simulationSource() {
 }
 
 /**
- * Uncached lookup — original implementation, unchanged in behavior.
- * `getAttestation` wraps this with a per-recordHash cache.
+ * Uncached lookup with circuit breaker and timeout protection.
  */
 async function fetchAttestationUncached(
   recordHash: string,
 ): Promise<Attestation | null> {
-  // Local-dev / pre-deploy fallback: no contract configured yet.
-  if (!serverEnv.ATTESTATION_CONTRACT_ID) {
-    return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+  return attestationBreaker.execute(async () => {
+    // Local-dev / pre-deploy fallback: no contract configured yet.
+    if (!serverEnv.ATTESTATION_CONTRACT_ID) {
+      return MOCK_ATTESTATIONS.get(recordHash) ?? null;
+    }
+
+    return withTimeout(async () => {
+      const server = new rpc.Server(serverEnv.SOROBAN_RPC_URL);
+      const contract = new Contract(serverEnv.ATTESTATION_CONTRACT_ID!);
+
+      const recordHashBytes = Buffer.from(recordHash, "hex");
+      const invocation = contract.call(
+        "get_attestation",
+        nativeToScVal(recordHashBytes, { type: "bytes" }),
+      );
+
+      const tx = new TransactionBuilder(simulationSource(), {
+        fee: BASE_FEE,
+        networkPassphrase: serverEnv.STELLAR_NETWORK_PASSPHRASE,
+      })
+        .addOperation(invocation)
+        .setTimeout(30)
+        .build();
+
+      const simulation = await server.simulateTransaction(tx);
+
+      // A record hash with no attestation reverts in-contract; the simulation
+      // reports an error rather than a value. Treat that as "not verified".
+      if (!rpc.Api.isSimulationSuccess(simulation)) {
+        return null;
+      }
+
+      const retval = simulation.result?.retval;
+      if (!retval) {
+        return null;
+      }
+
+      return decodeAttestation(scValToNative(retval), recordHash);
+    }, ATTESTATION_TIMEOUT_MS);
+  });
+}
+
+/**
+ * Simple in-memory memoization fallback for when unstable_cache is unavailable.
+ * Used outside full Next.js request context (tests, scripts, etc.).
+ */
+const memoCache = new Map<string, Promise<Attestation | null>>();
+const memoTimestamps = new Map<string, number>();
+
+/**
+ * Memoized lookup with TTL, used as fallback when unstable_cache context is missing.
+ */
+async function getAttestationMemoized(
+  recordHash: string,
+): Promise<Attestation | null> {
+  const now = Date.now();
+  const cacheKey = recordHash;
+  const ttlMs = ATTESTATION_CACHE_TTL_SECONDS * 1000;
+
+  const cachedTimestamp = memoTimestamps.get(cacheKey);
+  if (cachedTimestamp && now - cachedTimestamp < ttlMs) {
+    const cachedPromise = memoCache.get(cacheKey);
+    if (cachedPromise) {
+      return cachedPromise;
+    }
   }
 
-  const server = new rpc.Server(serverEnv.SOROBAN_RPC_URL);
-  const contract = new Contract(serverEnv.ATTESTATION_CONTRACT_ID);
+  const promise = fetchAttestationUncached(recordHash);
+  memoCache.set(cacheKey, promise);
+  memoTimestamps.set(cacheKey, now);
 
-  const recordHashBytes = Buffer.from(recordHash, "hex");
-  const invocation = contract.call(
-    "get_attestation",
-    nativeToScVal(recordHashBytes, { type: "bytes" }),
-  );
-
-  const tx = new TransactionBuilder(simulationSource(), {
-    fee: BASE_FEE,
-    networkPassphrase: serverEnv.STELLAR_NETWORK_PASSPHRASE,
-  })
-    .addOperation(invocation)
-    .setTimeout(30)
-    .build();
-
-  const simulation = await server.simulateTransaction(tx);
-
-  // A record hash with no attestation reverts in-contract; the simulation
-  // reports an error rather than a value. Treat that as "not verified".
-  if (!rpc.Api.isSimulationSuccess(simulation)) {
-    return null;
-  }
-
-  const retval = simulation.result?.retval;
-  if (!retval) {
-    return null;
-  }
-
-  return decodeAttestation(scValToNative(retval), recordHash);
+  return promise;
 }
 
 /**
  * Cached lookup, keyed by `recordHash`. Each distinct hash gets its own
  * cache entry, so results never leak across different records.
+ *
+ * The cache wrapper is constructed once at module scope to avoid:
+ * 1. Creating a new cache on every call (performance issue)
+ * 2. "incrementalCache missing" errors outside full Next.js request context
+ *
+ * When unstable_cache is unavailable (non-request context), falls back to
+ * process-local memoization with TTL.
  */
+const getCachedAttestation = (() => {
+  try {
+    // Attempt to create the unstable_cache wrapper at module scope
+    return unstable_cache(
+      async (hash: string) => fetchAttestationUncached(hash),
+      ["attestation"],
+      {
+        revalidate: ATTESTATION_CACHE_TTL_SECONDS,
+        tags: ["attestation"],
+      },
+    );
+  } catch {
+    // If unstable_cache fails (missing incremental cache context),
+    // fall back to simple memoization
+    return getAttestationMemoized;
+  }
+})();
+
 export async function getAttestation(
   recordHash: string,
 ): Promise<Attestation | null> {
-  const cached = unstable_cache(
-    async (hash: string) => fetchAttestationUncached(hash),
-    ["attestation", recordHash],
-    {
-      revalidate: ATTESTATION_CACHE_TTL_SECONDS,
-      tags: ["attestation", `attestation:${recordHash}`],
-    },
-  );
-
-  return cached(recordHash);
+  return getCachedAttestation(recordHash);
 }
 
 // TODO(#17 follow-up): once contract writes emit a "new attestation
@@ -168,11 +361,17 @@ export async function validateAttestation(recordHash: string): Promise<boolean> 
 
 /**
  * The contract returns the `Attestation` struct
- * ({ record_hash, attester, timestamp }). Decoding is defensive: we don't
- * assume the exact SCVal key casing, and we validate types so a malformed
+ * ({ record_hash, attester, timestamp, revoked, expiry }). Decoding is defensive:
+ * we don't assume the exact SCVal key casing, and we validate types so a malformed
  * on-chain value can't quietly poison the verified indicator.
+ *
+ * Option<T> fields (revoked, expiry) are decoded as:
+ * - Some(value): the value itself (boolean for revoked, bigint for expiry)
+ * - None: undefined
+ *
+ * Exported for testing.
  */
-function decodeAttestation(value: unknown, recordHash: string): Attestation | null {
+export function decodeAttestation(value: unknown, recordHash: string): Attestation | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
@@ -180,16 +379,27 @@ function decodeAttestation(value: unknown, recordHash: string): Attestation | nu
 
   const attester = extractAddress(raw.attester);
   const timestamp = extractTimestamp(raw.timestamp);
+  const revoked = extractOptionalBool(raw.revoked);
+  const expiry = extractOptionalU64(raw.expiry);
 
   if (typeof attester !== "string" || typeof timestamp !== "number") {
     return null;
   }
 
-  return {
+  const attestation: Attestation = {
     recordHash,
     attester,
     timestamp,
   };
+
+  if (revoked !== undefined) {
+    attestation.revoked = revoked;
+  }
+  if (expiry !== undefined) {
+    attestation.expiry = expiry;
+  }
+
+  return attestation;
 }
 
 function extractAddress(value: unknown): string | null {
@@ -214,4 +424,36 @@ function extractTimestamp(value: unknown): number | null {
     return Number.isSafeInteger(num) ? num : null;
   }
   return null;
+}
+
+/**
+ * Extract an optional boolean from Option<bool>.
+ * Returns the boolean if Some, undefined if None/invalid.
+ */
+function extractOptionalBool(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Extract an optional u64 from Option<u64>.
+ * Returns the number if Some, undefined if None/invalid.
+ */
+function extractOptionalU64(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    const num = Number(value);
+    return Number.isSafeInteger(num) ? num : undefined;
+  }
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return undefined;
 }
