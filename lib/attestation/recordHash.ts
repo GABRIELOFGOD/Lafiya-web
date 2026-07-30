@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 
 import type { EmergencyCardRow } from "@/lib/supabase/types";
+import { getAttestation } from "@/lib/stellar/attestation";
 
 /**
  * The subset of card fields that feed the commitment. `age` is deliberately
@@ -72,11 +73,24 @@ export function computeRecordHash(
   secretHex: string,
 ): string {
   if (!HEX_SECRET_PATTERN.test(secretHex)) {
-    throw new Error("computeRecordHash: secretHex must be a 64-character hex string");
+    throw new Error(
+      "computeRecordHash: secretHex must be a 64-character hex string",
+    );
   }
 
   const canonical = canonicalize(fields);
   return createHmac("sha256", Buffer.from(secretHex, "hex"))
     .update(canonical)
     .digest("hex");
+}
+
+/** Returns whether the current on-chain attestation exists and remains valid. */
+export async function validateAttestation(
+  recordHash: string,
+): Promise<boolean> {
+  const attestation = await getAttestation(recordHash);
+  if (!attestation || attestation.revoked) return false;
+  return (
+    attestation.expiry === undefined || attestation.expiry > Date.now() / 1000
+  );
 }

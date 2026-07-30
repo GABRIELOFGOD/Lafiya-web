@@ -288,7 +288,9 @@ Service-worker behaviour can't be exercised under jsdom, so verify it in a real 
 ### M2 — Incentives
 
 - [ ] USDC-on-Stellar payout wired to attestation events
-- [ ] CHW payout tracking
+- [x] Durable CHW payout tracking indexer (Soroban transaction + Horizon
+      payment ingestion, crash-safe cursors, and out-of-order reconciliation;
+      see [`docs/chw-payout-indexer.md`](docs/chw-payout-indexer.md))
 
 ### M3 — Pilot
 
@@ -405,6 +407,19 @@ If you change a field name, type, or hashing scheme here, update the Rust struct
 - `STELLAR_NETWORK_PASSPHRASE` — must match the network the contracts are deployed on
 - `SOROBAN_RPC_URL` — Soroban RPC endpoint (testnet first)
 - `ATTESTATION_CONTRACT_ID` — the deployed `lafiya-contracts` attestation registry contract id. **Optional:** when unset (local dev, CI, pre-deploy), `getAttestation` serves the in-memory mock so the verified indicator still renders
+- `STELLAR_HORIZON_URL` / `STELLAR_USDC_ISSUER` — Horizon endpoint and the
+  exact issuer of accepted USDC payments
+- `CHW_INCENTIVE_POOL_ADDRESS` — source account whose outgoing USDC payments
+  are indexed
+- `PAYOUT_INDEXER_START_LEDGER` / `PAYOUT_INDEXER_START_PAYMENT_CURSOR` —
+  explicit backfill origins used only while durable cursors are absent
+- `PAYOUT_INDEXER_CRON_SECRET` — server-only bearer credential for the
+  scheduled payout-indexer endpoint
+
+The payout mirror is refreshed by authenticated scheduled calls to
+`POST /api/internal/payout-indexer`; deployment, cursor-reset, correlation,
+and retention behavior are documented in
+[`docs/chw-payout-indexer.md`](docs/chw-payout-indexer.md).
 
 ### Open Integration Points (not yet implemented)
 

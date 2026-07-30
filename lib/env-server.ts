@@ -7,6 +7,12 @@ export const serverEnvSchema = clientEnvSchema.extend({
   STELLAR_NETWORK_PASSPHRASE: z.string().min(1),
   SOROBAN_RPC_URL: z.url(),
   ATTESTATION_CONTRACT_ID: z.string().optional(),
+  STELLAR_HORIZON_URL: z.url().optional(),
+  STELLAR_USDC_ISSUER: z.string().optional(),
+  CHW_INCENTIVE_POOL_ADDRESS: z.string().optional(),
+  PAYOUT_INDEXER_START_LEDGER: z.coerce.number().int().positive().optional(),
+  PAYOUT_INDEXER_START_PAYMENT_CURSOR: z.string().optional(),
+  PAYOUT_INDEXER_CRON_SECRET: z.string().min(16).optional(),
 });
 
 export const serverEnv = serverEnvSchema.parse({
@@ -16,4 +22,11 @@ export const serverEnv = serverEnvSchema.parse({
   STELLAR_NETWORK_PASSPHRASE: process.env.STELLAR_NETWORK_PASSPHRASE,
   SOROBAN_RPC_URL: process.env.SOROBAN_RPC_URL,
   ATTESTATION_CONTRACT_ID: process.env.ATTESTATION_CONTRACT_ID,
+  STELLAR_HORIZON_URL: process.env.STELLAR_HORIZON_URL,
+  STELLAR_USDC_ISSUER: process.env.STELLAR_USDC_ISSUER,
+  CHW_INCENTIVE_POOL_ADDRESS: process.env.CHW_INCENTIVE_POOL_ADDRESS,
+  PAYOUT_INDEXER_START_LEDGER: process.env.PAYOUT_INDEXER_START_LEDGER,
+  PAYOUT_INDEXER_START_PAYMENT_CURSOR:
+    process.env.PAYOUT_INDEXER_START_PAYMENT_CURSOR,
+  PAYOUT_INDEXER_CRON_SECRET: process.env.PAYOUT_INDEXER_CRON_SECRET,
 });
