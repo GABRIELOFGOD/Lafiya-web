@@ -1,20 +1,6 @@
 import { headers } from "next/headers";
 
-interface RateLimitRecord {
-  attempts: number;
-  blockedUntil: number | null;
-}
-
-// Store in globalThis to survive Hot Module Replacement (HMR) during dev
-const globalStore = globalThis as unknown as {
-  rateLimitStore?: Map<string, RateLimitRecord>;
-};
-
-if (!globalStore.rateLimitStore) {
-  globalStore.rateLimitStore = new Map<string, RateLimitRecord>();
-}
-
-const store = globalStore.rateLimitStore;
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -24,17 +10,35 @@ export interface RateLimitResult {
 
 /**
  * Checks if a given key is currently rate-limited/blocked.
+ *
+ * Backed by the `rate_limits` table (see supabase/migrations) rather than
+ * in-process memory: on Vercel, concurrent Server Action invocations are not
+ * guaranteed to share a process, so a single shared Postgres row is what
+ * actually makes the lockout visible across every instance handling a given
+ * key. This is a single indexed (primary key) read.
  */
 export async function checkRateLimit(key: string): Promise<RateLimitResult> {
-  const now = Date.now();
-  const record = store.get(key);
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("rate_limits")
+    .select("blocked_until")
+    .eq("key", key)
+    .maybeSingle();
 
-  if (record && record.blockedUntil && record.blockedUntil > now) {
-    const secondsRemaining = Math.ceil((record.blockedUntil - now) / 1000);
+  if (error) {
+    throw error;
+  }
+
+  const blockedUntil = data?.blocked_until
+    ? new Date(data.blocked_until).getTime()
+    : null;
+  const now = Date.now();
+
+  if (blockedUntil && blockedUntil > now) {
     return {
       allowed: false,
-      blockedUntil: new Date(record.blockedUntil),
-      secondsRemaining,
+      blockedUntil: new Date(blockedUntil),
+      secondsRemaining: Math.ceil((blockedUntil - now) / 1000),
     };
   }
 
@@ -48,38 +52,52 @@ export async function checkRateLimit(key: string): Promise<RateLimitResult> {
 /**
  * Records a failed attempt for the given key and calculates lockout backoff if necessary.
  *
- * Backoff rules:
+ * Backoff rules (enforced atomically in Postgres by the
+ * rate_limit_record_failure() function — see its migration for details):
  * - Attempts 1-4: Allowed, no lockout.
  * - Attempt 5: Locked out for 30 seconds.
  * - Attempts 6+: Locked out with exponential doubling (30s * 2^(attempts-5)) up to a maximum of 15 minutes (900s).
+ *
+ * The increment-then-check is done as a single `INSERT ... ON CONFLICT DO
+ * UPDATE` statement inside that function, so concurrent failures for the
+ * same key (whether from one instance or many) never lose an increment.
  */
 export async function recordFailure(key: string): Promise<void> {
-  const now = Date.now();
-  const record = store.get(key) || { attempts: 0, blockedUntil: null };
+  const supabase = createAdminClient();
+  const { error } = await supabase.rpc("rate_limit_record_failure", {
+    p_key: key,
+  });
 
-  record.attempts += 1;
-
-  if (record.attempts >= 5) {
-    const exponent = record.attempts - 5;
-    const durationSeconds = Math.min(900, 30 * Math.pow(2, exponent));
-    record.blockedUntil = now + durationSeconds * 1000;
+  if (error) {
+    throw error;
   }
-
-  store.set(key, record);
 }
 
 /**
  * Resets the rate limit records for a given key on successful attempt.
  */
 export async function recordSuccess(key: string): Promise<void> {
-  store.delete(key);
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("rate_limits").delete().eq("key", key);
+
+  if (error) {
+    throw error;
+  }
 }
 
 /**
  * Helper to clear all rate limits (useful in tests).
  */
-export function clearAllRateLimits(): void {
-  store.clear();
+export async function clearAllRateLimits(): Promise<void> {
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("rate_limits")
+    .delete()
+    .not("key", "is", null);
+
+  if (error) {
+    throw error;
+  }
 }
 
 /**

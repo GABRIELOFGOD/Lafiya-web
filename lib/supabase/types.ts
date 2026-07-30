@@ -91,6 +91,20 @@ export type ConsentLogRow = {
   accepted_at: string;
 };
 
+/** Row shape of public.rate_limits. See lib/rate-limit.ts. */
+export type RateLimitRow = {
+  key: string;
+  attempts: number;
+  blocked_until: string | null;
+  updated_at: string;
+};
+
+/** Return row shape of public.rate_limit_record_failure(p_key text). */
+export type RateLimitRecordFailureRow = {
+  attempts: number;
+  blocked_until: string | null;
+};
+
 /**
  * Matches the shape @supabase/supabase-js's `createClient<Database>()`
  * generic expects, so `.from("profiles")` and `.rpc("get_emergency_card")`
@@ -143,6 +157,10 @@ export type Database = {
       get_emergency_card: {
         Args: { p_card_id: string };
         Returns: EmergencyCardRow[];
+      };
+      rate_limit_record_failure: {
+        Args: { p_key: string };
+        Returns: RateLimitRecordFailureRow[];
       };
     };
     Enums: {
