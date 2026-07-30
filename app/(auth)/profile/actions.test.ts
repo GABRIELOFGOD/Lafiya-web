@@ -13,6 +13,13 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn().mockResolvedValue({}),
 }));
 
+// ensureRecordSecret talks to the (service-role, real-network) admin client;
+// isolate this unit test from it, matching the existing mocking philosophy.
+vi.mock("@/lib/attestation/recordSecret", () => ({
+  ensureRecordSecret: vi.fn().mockResolvedValue(undefined),
+  getSecretByUserId: vi.fn(),
+}));
+
 const mockCreateClient = await import("@/lib/supabase/server");
 
 describe("upsertProfile optimistic concurrency", () => {

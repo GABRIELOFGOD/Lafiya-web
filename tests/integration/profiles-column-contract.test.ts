@@ -53,6 +53,11 @@ const INTENTIONALLY_PRIVATE = [
   "date_of_birth",
   "created_at",
   "updated_at",
+  // Attestation bookkeeping (issue-03): only meaningful to the owning
+  // patient's own /profile page (staleness detection), never to an
+  // anonymous card scan.
+  "last_attested_hash",
+  "last_verified_at",
 ] as const satisfies readonly (keyof ProfileRow)[];
 
 const ALL_CLASSIFIED_COLUMNS = [

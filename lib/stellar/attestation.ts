@@ -151,6 +151,22 @@ export async function getAttestation(
 // immediately after that signal for faster-than-TTL invalidation.
 
 /**
+ * Validate that an attestation for the given record hash is present, not
+ * expired, and not revoked. Lives here (not lib/attestation/recordHash.ts)
+ * so recordHash.ts stays a pure, Stellar-SDK-free canonicalization module —
+ * see issues/issue-03-record-hash-commitment-scheme.md's note on this
+ * cross-cutting concern.
+ */
+export async function validateAttestation(recordHash: string): Promise<boolean> {
+  const att = await getAttestation(recordHash);
+  if (!att) return false;
+  const now = Math.floor(Date.now() / 1000);
+  if (att.revoked) return false;
+  if (att.expiry && att.expiry < now) return false;
+  return true;
+}
+
+/**
  * The contract returns the `Attestation` struct
  * ({ record_hash, attester, timestamp }). Decoding is defensive: we don't
  * assume the exact SCVal key casing, and we validate types so a malformed
