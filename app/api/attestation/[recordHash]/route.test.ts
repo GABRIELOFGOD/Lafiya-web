@@ -1,11 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/stellar/attestation", () => ({
   getAttestation: vi.fn(),
   DEMO_VERIFIED_RECORD_HASH: "a".repeat(64),
 }));
 
+const { mockHeaders } = vi.hoisted(() => ({ mockHeaders: vi.fn() }));
+vi.mock("next/headers", () => ({
+  headers: mockHeaders,
+}));
+
 import { getAttestation } from "@/lib/stellar/attestation";
+import { clearAllRateLimits } from "@/lib/rate-limit";
 import { GET } from "./route";
 
 const VALID_HASH = "b".repeat(64);
@@ -16,6 +22,13 @@ const MOCK_ATTESTATION = {
 };
 
 describe("Attestation Route Handler", () => {
+  beforeEach(() => {
+    clearAllRateLimits();
+    mockHeaders.mockResolvedValue({
+      get: (name: string) => (name === "x-forwarded-for" ? "203.0.113.1" : null),
+    });
+  });
+
   it("returns verified true and attestation object for a known valid hash", async () => {
     vi.mocked(getAttestation).mockResolvedValue(MOCK_ATTESTATION);
 
@@ -127,5 +140,94 @@ describe("Attestation Route Handler", () => {
     const data = await response.json();
     const keys = Object.keys(data).sort();
     expect(keys).toEqual(["attestation", "verified"]);
+  });
+
+  describe("rate limiting (defense-in-depth)", () => {
+    it("blocks with 429 after 5 lookups from the same IP", async () => {
+      vi.mocked(getAttestation).mockResolvedValue(null);
+
+      for (let i = 0; i < 5; i++) {
+        const response = await GET(
+          new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+          { params: Promise.resolve({ recordHash: VALID_HASH }) },
+        );
+        expect(response.status).toBe(200);
+      }
+
+      const blocked = await GET(
+        new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+        { params: Promise.resolve({ recordHash: VALID_HASH }) },
+      );
+
+      expect(blocked.status).toBe(429);
+      const data = await blocked.json();
+      expect(data).toMatchObject({ error: expect.any(String) });
+      expect(data.secondsRemaining).toBeGreaterThan(0);
+    });
+
+    it("does not consult getAttestation once blocked", async () => {
+      vi.mocked(getAttestation).mockResolvedValue(null);
+
+      for (let i = 0; i < 5; i++) {
+        await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
+          params: Promise.resolve({ recordHash: VALID_HASH }),
+        });
+      }
+      vi.mocked(getAttestation).mockClear();
+
+      await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
+        params: Promise.resolve({ recordHash: VALID_HASH }),
+      });
+
+      expect(getAttestation).not.toHaveBeenCalled();
+    });
+
+    it("counts a lookup as an attempt even when it resolves 'verified: true' — a lucky guess must not reset the counter", async () => {
+      vi.mocked(getAttestation).mockResolvedValue(MOCK_ATTESTATION);
+
+      for (let i = 0; i < 5; i++) {
+        await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
+          params: Promise.resolve({ recordHash: VALID_HASH }),
+        });
+      }
+
+      const blocked = await GET(
+        new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+        { params: Promise.resolve({ recordHash: VALID_HASH }) },
+      );
+      expect(blocked.status).toBe(429);
+    });
+
+    it("tracks limits independently per client IP", async () => {
+      vi.mocked(getAttestation).mockResolvedValue(null);
+
+      for (let i = 0; i < 5; i++) {
+        await GET(new Request(`http://localhost/api/attestation/${VALID_HASH}`), {
+          params: Promise.resolve({ recordHash: VALID_HASH }),
+        });
+      }
+
+      mockHeaders.mockResolvedValue({
+        get: (name: string) => (name === "x-forwarded-for" ? "198.51.100.7" : null),
+      });
+
+      const fromOtherIp = await GET(
+        new Request(`http://localhost/api/attestation/${VALID_HASH}`),
+        { params: Promise.resolve({ recordHash: VALID_HASH }) },
+      );
+      expect(fromOtherIp.status).toBe(200);
+    });
+
+    it("400 responses for malformed hashes are not rate-limited attempts", async () => {
+      const shortHash = "a".repeat(63);
+
+      for (let i = 0; i < 10; i++) {
+        const response = await GET(
+          new Request(`http://localhost/api/attestation/${shortHash}`),
+          { params: Promise.resolve({ recordHash: shortHash }) },
+        );
+        expect(response.status).toBe(400);
+      }
+    });
   });
 });

@@ -1,30 +1,170 @@
-name: Load Test get_emergency_card
+name: Load Test — get_emergency_card
+
+# Runs the k6 load-test harness against a local Supabase + Next.js build.
+# Triggered manually or on a weekly schedule.  Can also be called from
+# other workflows (e.g., a nightly regression suite).
+#
+# The workflow:
+#   1. Starts a local Supabase instance (matching the integration-test pattern).
+#   2. Seeds 500 load-test profiles via seed_loadtest.sql.
+#   3. Builds and starts the Next.js production server.
+#   4. Runs k6 with two scenarios (cache-hit + cache-miss).
+#   5. Fails the job if any k6 threshold is breached (SLO regression).
 
 on:
   workflow_dispatch:
     inputs:
-      base_url:
-        description: 'Staging base URL'
-        required: true
-        default: 'https://staging.example.com'
       concurrency:
-        description: 'Number of virtual users'
-        required: true
-        default: '200'
+        description: "Number of virtual users per scenario"
+        required: false
+        default: "50"
+      duration:
+        description: "Steady-state duration per scenario (k6 format, e.g. 1m)"
+        required: false
+        default: "1m"
+  schedule:
+    # Weekly on Sunday at 04:00 UTC — low-traffic window.
+    - cron: "0 4 * * 0"
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
 
 jobs:
   load-test:
+    name: k6 load test (cache-hit + cache-miss)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v3
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Reset database and apply migrations
+        run: supabase db reset
+
+      - name: Seed load-test data
+        run: |
+          # The seed script needs the local Supabase DB URL.
+          # `supabase status` outputs key=value pairs; extract DB URL.
+          DB_URL=$(supabase status --output json | jq -r '.DB_URL // empty')
+          if [ -z "$DB_URL" ]; then
+            # Fallback: default local Supabase DB URL
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          psql "$DB_URL" -f supabase/seed_loadtest.sql
+
+      - name: Verify seed data
+        run: |
+          DB_URL=$(supabase status --output json | jq -r '.DB_URL // empty')
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          COUNT=$(psql "$DB_URL" -t -c "SELECT count(*) FROM public.profiles WHERE user_id IN (SELECT id FROM auth.users WHERE email LIKE 'loadtest-%@lafiya.test');")
+          COUNT=$(echo "$COUNT" | tr -d '[:space:]')
+          echo "Seeded $COUNT load-test profiles"
+          if [ "$COUNT" -lt 100 ]; then
+            echo "::error::Expected at least 100 seeded profiles, got $COUNT"
+            exit 1
+          fi
+
+      - name: Verify card_ids.txt
+        run: |
+          LINES=$(wc -l < loadtest/card_ids.txt | tr -d '[:space:]')
+          echo "card_ids.txt contains $LINES entries"
+          if [ "$LINES" -lt 100 ]; then
+            echo "::error::card_ids.txt has fewer than 100 entries ($LINES)"
+            exit 1
+          fi
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Start Next.js server
+        run: |
+          npm run start > /tmp/nextjs.log 2>&1 &
+          echo "NEXT_PID=$!" >> "$GITHUB_ENV"
+          # Wait for the server to be ready.
+          npx wait-on --timeout 60000 http://localhost:3000
+
+      - name: Smoke-test a card page
+        run: |
+          # Grab the first card ID and verify we get a 200.
+          CARD_ID=$(head -1 loadtest/card_ids.txt)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3000/card/$CARD_ID")
+          echo "Smoke test: GET /card/$CARD_ID → HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Smoke test failed — expected 200, got $STATUS"
+            curl -s "http://localhost:3000/card/$CARD_ID" | head -50
+            exit 1
+          fi
+
       - name: Install k6
         run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install -y k6
-      - name: Run load test
+
+      - name: Run k6 load test
         env:
-          BASE_URL: ${{ github.event.inputs.base_url }}
-          CONCURRENCY: ${{ github.event.inputs.concurrency }}
+          BASE_URL: http://localhost:3000
+          CONCURRENCY: ${{ github.event.inputs.concurrency || '50' }}
+          DURATION: ${{ github.event.inputs.duration || '1m' }}
+          K6_OUT: json=loadtest/results.json
         run: |
-          k6 run loadtest/k6_get_emergency_card_test.js
+          k6 run \
+            --summary-export=loadtest/summary.json \
+            loadtest/k6_get_emergency_card_test.js
+
+      - name: Report results summary
+        if: always()
+        run: |
+          if [ -f loadtest/summary.json ]; then
+            echo "## k6 Load Test Results" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat loadtest/summary.json | python3 -m json.tool >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || cat loadtest/summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loadtest-results
+          path: |
+            loadtest/summary.json
+            loadtest/results.json
+          retention-days: 30
+
+      - name: Stop Next.js server
+        if: always()
+        run: |
+          if [ -n "$NEXT_PID" ]; then
+            kill "$NEXT_PID" 2>/dev/null || true
+          fi
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop

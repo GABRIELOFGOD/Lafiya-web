@@ -40,8 +40,33 @@ export type ProfileRow = {
   medications: string[];
   chronic_conditions: string[];
   emergency_contacts: EmergencyContact[];
+  /**
+   * record_hash (hex) as of the last time this profile was observed to
+   * have a valid on-chain attestation. Never exposed via
+   * get_emergency_card() — see profiles-column-contract.test.ts.
+   */
+  last_attested_hash: string | null;
+  last_verified_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Row shape of public.profile_secrets. Never read/written outside lib/attestation/recordSecret.ts. */
+export type ProfileSecretRow = {
+  user_id: string;
+  secret: string;
+  created_at: string;
+};
+
+export type ReattestationRequestStatus = "pending" | "completed" | "dismissed";
+
+/** Row shape of public.reattestation_requests. */
+export type ReattestationRequestRow = {
+  id: string;
+  user_id: string;
+  record_hash: string;
+  requested_at: string;
+  status: ReattestationRequestStatus;
 };
 
 /** Return row shape of public.get_emergency_card(p_card_id uuid). */
@@ -113,10 +138,17 @@ export type Database = {
         Update: Partial<ConsentLogRow>;
         Relationships: [];
       };
-      rate_limits: {
-        Row: RateLimitRow;
-        Insert: Pick<RateLimitRow, "key"> & Partial<RateLimitRow>;
-        Update: Partial<RateLimitRow>;
+      profile_secrets: {
+        Row: ProfileSecretRow;
+        Insert: Partial<ProfileSecretRow> & Pick<ProfileSecretRow, "user_id" | "secret">;
+        Update: Partial<Omit<ProfileSecretRow, "user_id">>;
+        Relationships: [];
+      };
+      reattestation_requests: {
+        Row: ReattestationRequestRow;
+        Insert: Partial<ReattestationRequestRow> &
+          Pick<ReattestationRequestRow, "user_id" | "record_hash">;
+        Update: Partial<Omit<ReattestationRequestRow, "id">>;
         Relationships: [];
       };
     };

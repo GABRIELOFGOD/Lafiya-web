@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 import { computeRecordHash } from "@/lib/attestation/recordHash";
+import { getSecretByCardPublicId } from "@/lib/attestation/recordSecret";
 import { logError } from "@/lib/logging/logger";
 import { createClient } from "@/lib/supabase/server";
-import { getAttestation } from "@/lib/stellar/attestation";
+import { validateAttestation } from "@/lib/stellar/attestation";
 
 import { VerifiedBadge, type VerificationStatus } from "./verified-badge";
 
@@ -60,18 +61,32 @@ export default async function PublicCardPage({
   }
 
   const card = data[0];
-  const recordHash = computeRecordHash(card);
+
+  // The record_hash is HMAC-keyed by a per-patient secret that lives in a
+  // zero-grant table (public.profile_secrets) — an anonymous visitor has no
+  // legitimate route to it, so this is the one deliberate, narrow use of
+  // the service-role admin client on this otherwise fully anonymous page.
+  // See lib/attestation/recordSecret.ts.
+  const secret = await getSecretByCardPublicId(id);
 
   let status: VerificationStatus;
-  try {
-    const attestation = await getAttestation(recordHash);
-    status = attestation !== null ? "verified" : "not_verified";
-  } catch (err) {
-    logError("Failed to retrieve attestation from Stellar", err, {
+  if (secret === null) {
+    logError("No record secret found for card", new Error("missing secret"), {
       route: "/card/[id]",
-      recordHash,
+      cardPublicId: id,
     });
     status = "unavailable";
+  } else {
+    const recordHash = computeRecordHash(card, secret);
+    try {
+      status = (await validateAttestation(recordHash)) ? "verified" : "not_verified";
+    } catch (err) {
+      logError("Failed to retrieve attestation from Stellar", err, {
+        route: "/card/[id]",
+        recordHash,
+      });
+      status = "unavailable";
+    }
   }
 
   return (
