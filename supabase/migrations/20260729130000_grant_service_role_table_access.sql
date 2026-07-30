@@ -18,18 +18,17 @@
 -- denied for table consent_logs" against a real, freshly-provisioned
 -- Supabase project (hosted or local), which the app treats as a consent
 -- failure — it rolls back the just-created auth user and returns an error
--- instead of redirecting to /profile. This is what e2e/signup-to-card.spec.ts
--- was actually catching (timing out waiting for the post-signup redirect),
--- and reproduces identically on main.
+-- instead of redirecting to /profile. It also breaks any integration test
+-- that reads/writes these tables via the service-role admin client (e.g.
+-- tests/integration/profiles-column-contract.test.ts's `adminClient
+-- .from("profiles").select("*")`).
 --
--- Fix: grant service_role explicit CRUD on every existing table that the
--- admin client writes to or reads from, and set default privileges so
--- future tables in this schema don't repeat this bug.
+-- Fix: grant service_role explicit CRUD on every existing table the admin
+-- client touches, and set default privileges so future tables in this
+-- schema don't repeat this bug.
 grant select, insert, update, delete on public.profiles to service_role;
 grant select, insert, update, delete on public.consent_logs to service_role;
 grant select, insert, update, delete on public.chw_payouts to service_role;
-grant select, insert, update, delete on public.profile_secrets to service_role;
-grant select, insert, update, delete on public.reattestation_requests to service_role;
 
 -- Migrations in this project run as the `postgres` role, so this affects
 -- objects `postgres` creates in `public` going forward — i.e. every future
