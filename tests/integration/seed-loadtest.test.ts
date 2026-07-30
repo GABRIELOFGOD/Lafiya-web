@@ -38,7 +38,9 @@ describe("seed_loadtest.sql", () => {
         timeout: 10_000,
       });
       const status = JSON.parse(statusJson);
-      dbUrl = status.DB_URL || "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+      dbUrl =
+        status.DB_URL ||
+        "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
     } catch {
       dbUrl = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
     }
@@ -53,18 +55,34 @@ describe("seed_loadtest.sql", () => {
 
   afterAll(async () => {
     // Clean up loadtest users to avoid polluting other integration tests.
-    // We use the service role client to list and delete them.
+    // Delete in bounded concurrent batches: the seed can create 500 users,
+    // and deleting them sequentially exceeds Vitest's default hook timeout on
+    // CI while firing all 500 requests at once overloads local GoTrue.
     const { data: users } = await adminClient.auth.admin.listUsers({
       perPage: 1000,
     });
-    if (users?.users) {
-      for (const u of users.users) {
-        if (u.email?.startsWith("loadtest-") && u.email?.endsWith("@lafiya.test")) {
-          await adminClient.auth.admin.deleteUser(u.id);
-        }
+    const loadtestUsers =
+      users?.users.filter(
+        (user) =>
+          user.email?.startsWith("loadtest-") &&
+          user.email.endsWith("@lafiya.test"),
+      ) ?? [];
+
+    const deleteBatchSize = 25;
+    for (
+      let index = 0;
+      index < loadtestUsers.length;
+      index += deleteBatchSize
+    ) {
+      const batch = loadtestUsers.slice(index, index + deleteBatchSize);
+      const results = await Promise.all(
+        batch.map((user) => adminClient.auth.admin.deleteUser(user.id)),
+      );
+      for (const { error } of results) {
+        if (error) throw error;
       }
     }
-  });
+  }, 60_000);
 
   it("creates at least 100 load-test profiles", async () => {
     // Use a raw SQL query via Supabase's RPC to count profiles.
